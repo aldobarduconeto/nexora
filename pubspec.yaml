@@ -1,0 +1,51 @@
+name: nexora
+description: "Mensagens privadas com identidade local e conexão P2P direta."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker: 13.2.0
+  uuid: ^4.6.0
+  cryptography: ^2.9.0
+  cupertino_icons: ^1.0.8
+  shared_preferences: 2.5.6
+  flutter_webrtc: ^1.6.2+hotfix.4
+  flutter_secure_storage: ^11.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.3
+  shared_preferences_platform_interface: ^2.4.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+
+flutter_launcher_icons:
+  image_path: assets/icon.png
+  android: true
+  adaptive_icon_background: "#101827"
+  adaptive_icon_foreground: assets/icon.png
+  adaptive_icon_foreground_inset: 0
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#101827"
+  web:
+    generate: true
+    image_path: assets/icon.png
+    background_color: "#101827"
+    theme_color: "#101827"
+  windows:
+    generate: true
+    image_path: assets/icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/icon.png
