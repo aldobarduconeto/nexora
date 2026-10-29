@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ------------------------------------------------------
-  # 1. Android (APK) & Linux (Bundle + .DEB)
+  # 1. Android (APK)
   # ------------------------------------------------------
   build-ubuntu:
     runs-on: ubuntu-latest
@@ -21,11 +21,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Instalar dependências para Linux e ferramentas de empacotamento
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblldb-dev dpkg-dev
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
@@ -44,51 +39,11 @@ jobs:
       - name: Renomear APK
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/nexora.apk
 
-      # --- BUILD LINUX ---
-      - name: Build do Linux
-        run: flutter build linux --release
-
-      - name: Compactar pacote Linux (.tar.gz)
-        run: |
-          cd build/linux/x64/release/bundle
-          tar -czvf ../../../../../nexora-Linux.tar.gz .
-          cd ../../../../..
-
-      # --- GERAR PACOTE .DEB ---
-      - name: Criar estrutura do pacote .DEB
-        run: |
-          mkdir -p deb_package/DEBIAN
-          mkdir -p deb_package/usr/bin
-          mkdir -p deb_package/usr/lib/nexora
-
-          # Copiar os ficheiros compilados do Linux para a estrutura do .deb
-          cp -r build/linux/x64/release/bundle/* deb_package/usr/lib/nexora/
-
-          # Criar o atalho no /usr/bin
-          ln -s /usr/lib/nexora/nexora deb_package/usr/bin/nexora
-
-          # Criar o ficheiro de controlo do pacote .deb
-          cat <<EOT > deb_package/DEBIAN/control
-          Package: nexora
-          Version: 1.0.0
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: nexora
-          Description: Aplicação nexora compilada com Flutter
-          EOT
-
-          # Construir o pacote .deb final
-          dpkg-deb --build deb_package nexora.deb
-
-      - name: Upload dos Artefatos Ubuntu
+      - name: Upload do Artefato Android
         uses: actions/upload-artifact@v4
         with:
-          name: nexora-Ubuntu
-          path: |
-            build/app/outputs/flutter-apk/nexora.apk
-            nexora-Linux.tar.gz
-            nexora.deb
+          name: nexora-Android
+          path: build/app/outputs/flutter-apk/nexora.apk
 
   # ------------------------------------------------------
   # 2. Windows Executável & Criador de Instalador .exe
@@ -221,9 +176,7 @@ jobs:
       - name: Organizar arquivos com nome nexora
         run: |
           mkdir -p release_assets
-          cp artifacts/nexora-Ubuntu/nexora.apk release_assets/nexora.apk || true
-          cp artifacts/nexora-Ubuntu/nexora-Linux.tar.gz release_assets/nexora-Linux.tar.gz || true
-          cp artifacts/nexora-Ubuntu/nexora.deb release_assets/nexora.deb || true
+          cp artifacts/nexora-Android/nexora.apk release_assets/nexora.apk || true
           cp artifacts/nexora-Windows-Setup/nexora-Setup.exe release_assets/nexora-Setup.exe || true
           cp artifacts/nexora-Apple/nexora.dmg release_assets/nexora.dmg || true
           cp artifacts/nexora-Apple/nexora.ipa release_assets/nexora.ipa || true
