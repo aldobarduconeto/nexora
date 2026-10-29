@@ -1,0 +1,240 @@
+name: nexora - Multi-Platform Build & Release
+
+on:
+  push:
+    tags:
+      - 'v1.0.0' # Executa ao enviar tags no formato v1.0.0
+  workflow_dispatch: # Permite disparar manualmente na aba Actions
+
+jobs:
+  # ------------------------------------------------------
+  # 1. Android (APK) & Linux (Bundle + .DEB)
+  # ------------------------------------------------------
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Instalar dependências para Linux e ferramentas de empacotamento
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblldb-dev dpkg-dev
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.47.8'
+          cache: true
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      # --- BUILD ANDROID (APK) ---
+      - name: Build do APK
+        run: flutter build apk --release
+
+      - name: Renomear APK
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/nexora.apk
+
+      # --- BUILD LINUX ---
+      - name: Build do Linux
+        run: flutter build linux --release
+
+      - name: Compactar pacote Linux (.tar.gz)
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czvf ../../../../../nexora-Linux.tar.gz .
+          cd ../../../../..
+
+      # --- GERAR PACOTE .DEB ---
+      - name: Criar estrutura do pacote .DEB
+        run: |
+          mkdir -p deb_package/DEBIAN
+          mkdir -p deb_package/usr/bin
+          mkdir -p deb_package/usr/lib/nexora
+
+          # Copiar os ficheiros compilados do Linux para a estrutura do .deb
+          cp -r build/linux/x64/release/bundle/* deb_package/usr/lib/nexora/
+
+          # Criar o atalho no /usr/bin
+          ln -s /usr/lib/nexora/nexora deb_package/usr/bin/nexora
+
+          # Criar o ficheiro de controlo do pacote .deb
+          cat <<EOT > deb_package/DEBIAN/control
+          Package: nexora
+          Version: 1.0.0
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: nexora
+          Description: Aplicação nexora compilada com Flutter
+          EOT
+
+          # Construir o pacote .deb final
+          dpkg-deb --build deb_package nexora.deb
+
+      - name: Upload dos Artefatos Ubuntu
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-Ubuntu
+          path: |
+            build/app/outputs/flutter-apk/nexora.apk
+            nexora-Linux.tar.gz
+            nexora.deb
+
+  # ------------------------------------------------------
+  # 2. Windows Executável & Criador de Instalador .exe
+  # ------------------------------------------------------
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.47.8'
+          cache: true
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      - name: Build do Windows
+        run: flutter build windows --release
+
+      - name: Baixar e Instalar Inno Setup
+        run: |
+          choco install innosetup -y
+
+      - name: Gerar Instalador EXE (Inno Setup)
+        shell: powershell
+        run: |
+          # Criar script basico do Inno Setup via PowerShell
+          $issContent = @"
+          [Setup]
+          AppName=nexora
+          AppVersion=1.0.0
+          DefaultDirName={autopf}\nexora
+          DefaultGroupName=nexora
+          OutputDir=.
+          OutputBaseFilename=nexora-Setup
+          Compression=lzma
+          SolidCompression=yes
+
+          [Files]
+          Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\nexora"; Filename: "{app}\nexora.exe"
+          "@
+          Set-Content -Path setup.iss -Value $issContent
+          ISCC.exe setup.iss
+
+      - name: Upload do Instalador EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-Windows-Setup
+          path: nexora-Setup.exe
+
+  # ------------------------------------------------------
+  # 3. macOS (Criar .dmg) e iOS (Criar .ipa)
+  # ------------------------------------------------------
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.47.8'
+          cache: true
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      - name: Instalar Ferramenta create-dmg
+        run: brew install create-dmg
+
+      # --- BUILD MACOS (.DMG) ---
+      - name: Build para macOS
+        run: flutter build macos --release
+
+      - name: Criar imagem DMG para macOS
+        run: |
+          create-dmg \
+            --volname "nexora Installer" \
+            --volicon "macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "nexora.app" 200 190 \
+            --hide-extension "nexora.app" \
+            --app-drop-link 600 190 \
+            "nexora.dmg" \
+            "build/macos/Build/Products/Release/nexora.app" || true
+
+      # --- BUILD IOS (.IPA) ---
+      - name: Build para iOS (Sem assinatura)
+        run: flutter build ios --release --no-codesign
+
+      - name: Empacotar estrutura Payload para gerar .IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/nexora.app
+          zip -r nexora.ipa Payload
+
+      - name: Upload dos Artefatos Apple
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-Apple
+          path: |
+            nexora.dmg
+            nexora.ipa
+
+  # ------------------------------------------------------
+  # 4. Job Unificado de Publicação nas Releases
+  # ------------------------------------------------------
+  publish-release:
+    needs: [build-ubuntu, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar todos os artefatos
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organizar arquivos com nome nexora
+        run: |
+          mkdir -p release_assets
+          cp artifacts/nexora-Ubuntu/nexora.apk release_assets/nexora.apk || true
+          cp artifacts/nexora-Ubuntu/nexora-Linux.tar.gz release_assets/nexora-Linux.tar.gz || true
+          cp artifacts/nexora-Ubuntu/nexora.deb release_assets/nexora.deb || true
+          cp artifacts/nexora-Windows-Setup/nexora-Setup.exe release_assets/nexora-Setup.exe || true
+          cp artifacts/nexora-Apple/nexora.dmg release_assets/nexora.dmg || true
+          cp artifacts/nexora-Apple/nexora.ipa release_assets/nexora.ipa || true
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.0"
+          name: "nexora V1.0.0 - Initial Release"
+          files: release_assets/*
+          generate_release_notes: true
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
