@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Nexora
+Comment=Conversas privadas com conexão P2P direta
+Exec=nexora
+Icon=com.moon.nexora
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupWMClass=com.moon.nexora
