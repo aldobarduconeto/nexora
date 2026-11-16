@@ -10,9 +10,74 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  FlMethodChannel* window_channel;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
+
+// Handler for platform channel window controls on Linux
+static void window_method_call_cb(FlMethodChannel* channel,
+                                  FlMethodCall* method_call,
+                                  gpointer user_data) {
+  GtkWindow* window = GTK_WINDOW(user_data);
+  const gchar* method = fl_method_call_get_name(method_call);
+
+  if (g_strcmp0(method, "minimize") == 0) {
+    if (window != nullptr) {
+      gtk_window_iconify(window);
+    }
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+  } else if (g_strcmp0(method, "maximize") == 0) {
+    if (window != nullptr) {
+      if (gtk_window_is_maximized(window)) {
+        gtk_window_unmaximize(window);
+      } else {
+        gtk_window_maximize(window);
+      }
+    }
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+  } else if (g_strcmp0(method, "close") == 0) {
+    if (window != nullptr) {
+      gtk_window_close(window);
+    }
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+  } else if (g_strcmp0(method, "isMaximized") == 0) {
+    gboolean is_max = window != nullptr && gtk_window_is_maximized(window);
+    g_autoptr(FlValue) val = fl_value_new_bool(is_max);
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_success_response_new(val));
+    fl_method_call_respond(method_call, response, nullptr);
+  } else if (g_strcmp0(method, "startDragging") == 0) {
+    if (window != nullptr) {
+      GdkWindow* gdk_window = gtk_widget_get_window(GTK_WIDGET(window));
+      if (gdk_window != nullptr) {
+        GdkDisplay* display = gtk_widget_get_display(GTK_WIDGET(window));
+        GdkSeat* seat = gdk_display_get_default_seat(display);
+        if (seat != nullptr) {
+          GdkDevice* device = gdk_seat_get_pointer(seat);
+          gint root_x = 0, root_y = 0;
+          if (device != nullptr) {
+            gdk_device_get_position(device, nullptr, &root_x, &root_y);
+          }
+          gtk_window_begin_move_drag(window, 1, root_x, root_y, GDK_CURRENT_TIME);
+        }
+      }
+    }
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+  } else {
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+    fl_method_call_respond(method_call, response, nullptr);
+  }
+}
 
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
@@ -67,6 +132,17 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  // Setup platform channel for frameless window controls & dragging
+  FlEngine* engine = fl_view_get_engine(view);
+  FlBinaryMessenger* messenger = fl_engine_get_binary_messenger(engine);
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  self->window_channel =
+      fl_method_channel_new(messenger, "nexora/window", FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->window_channel,
+                                            window_method_call_cb,
+                                            window,
+                                            nullptr);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -112,6 +188,7 @@ static void my_application_shutdown(GApplication* application) {
 // Implements GObject::dispose.
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
+  g_clear_object(&self->window_channel);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }

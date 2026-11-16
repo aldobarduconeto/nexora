@@ -13,6 +13,7 @@ import 'package:nexora/src/services/permission_service.dart';
 import 'package:nexora/src/services/scheduled_message_service.dart';
 import 'package:nexora/src/services/settings_services.dart';
 import 'package:nexora/src/utils/app_locale.dart';
+import 'package:nexora/src/utils/app_text.dart';
 import 'package:nexora/src/utils/qr_code.dart';
 import 'package:nexora/src/views/device_mirror_host_view.dart';
 import 'package:nexora/src/views/device_mirror_receive_view.dart';
@@ -45,14 +46,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   final List<({String id, String label, IconData icon})> _categories = const [
     (id: 'all', label: 'Tudo', icon: Icons.grid_view_rounded),
-    (id: 'profile', label: 'Identidade', icon: Icons.person_pin_rounded),
-    (id: 'streaming', label: 'Streaming 4K & Chamadas', icon: Icons.four_k_rounded),
+    (id: 'profile', label: 'Perfil & Dados', icon: Icons.person_pin_rounded),
+    (id: 'streaming', label: 'Vídeo 4K & Chamadas', icon: Icons.four_k_rounded),
     (id: 'messages', label: 'Mensagens & Envio', icon: Icons.schedule_send_rounded),
-    (id: 'communities', label: 'Comunidades P2P', icon: Icons.hub_rounded),
+    (id: 'communities', label: 'Comunidades', icon: Icons.hub_rounded),
     (id: 'theme', label: 'Aparência & Tema', icon: Icons.palette_outlined),
     (id: 'privacy', label: 'Segurança & Privacidade', icon: Icons.shield_outlined),
     (id: 'notifications', label: 'Notificações', icon: Icons.notifications_active_outlined),
-    (id: 'network', label: 'Rede P2P & Espelhamento', icon: Icons.sensors_rounded),
+    (id: 'network', label: 'Conexão & Aparelhos', icon: Icons.sensors_rounded),
     (id: 'storage', label: 'Armazenamento', icon: Icons.storage_rounded),
     (id: 'about', label: 'Sobre & Permissões', icon: Icons.info_outline_rounded),
   ];
@@ -176,7 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             const Icon(Icons.qr_code_2_rounded, size: 28),
             const SizedBox(width: 10),
-            const Text('Sua Chave Pública'),
+            const Text('Seu Código de Contato'),
           ],
         ),
         content: SizedBox(
@@ -208,7 +209,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Compartilhe esta chave com contatos para iniciar uma conversa P2P criptografada direta.',
+                  'Compartilhe este código com contatos para iniciar uma conversa privada direta.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
@@ -222,11 +223,11 @@ class _SettingsPageState extends State<SettingsPage> {
               await Clipboard.setData(ClipboardData(text: key));
               if (context.mounted) {
                 Navigator.pop(context);
-                _notice('Chave pública copiada para a área de transferência.');
+                _notice('Código de contato copiado.');
               }
             },
             icon: const Icon(Icons.copy_rounded, size: 18),
-            label: const Text('Copiar Chave'),
+            label: const Text('Copiar Código'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context),
@@ -363,7 +364,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         final conv = _user.conversations
                             .where((c) => c.id == msg.conversationId)
                             .firstOrNull;
-                        final convName = conv?.title ?? 'Conversa P2P';
+                        final convName = conv?.title ?? 'Conversa Privada';
 
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -426,9 +427,9 @@ class _SettingsPageState extends State<SettingsPage> {
         builder: (context) => AlertDialog(
           title: const Row(
             children: [
-              Icon(Icons.vpn_key_rounded, color: Colors.amber),
+              Icon(Icons.shield_rounded, color: Colors.amber),
               SizedBox(width: 10),
-              Text('Backup da Chave Privada'),
+              Text('Cópia de Segurança'),
             ],
           ),
           content: Column(
@@ -436,7 +437,7 @@ class _SettingsPageState extends State<SettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Esta semente de 256 bits recupera sua identidade em qualquer outro dispositivo. NUNCA a compartilhe com terceiros.',
+                'Este código permite recuperar seu perfil e conversas em qualquer outro aparelho. Guarde-o em local seguro.',
                 style: TextStyle(fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -463,7 +464,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: base64Seed));
                 Navigator.pop(context);
-                _notice('Semente copiada com segurança.');
+                _notice('Código copiado com segurança.');
               },
               icon: const Icon(Icons.copy_rounded, size: 18),
               label: const Text('Copiar'),
@@ -476,21 +477,21 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
     } catch (_) {
-      _notice('Não foi possível extrair a chave privada.');
+      _notice('Não foi possível extrair a cópia de segurança.');
     }
   }
 
   Future<void> _wipeData() async {
     final confirmed = await confirmAction(
       context,
-      title: 'Destruir Identidade e Dados Locais?',
+      title: 'Apagar Perfil e Dados Locais?',
       description:
-          'Esta ação apagará permanentemente sua chave privada, histórico de mensagens e configurações deste aparelho. Não é possível desfazer.',
-      action: 'Destruir Tudo',
+          'Esta ação apagará permanentemente seu perfil, histórico de mensagens e configurações deste aparelho. Não é possível desfazer.',
+      action: 'Apagar Tudo',
     );
     if (confirmed && mounted) {
       await _user.wipeAllData();
-      _notice('Todos os dados locais foram destruídos com segurança.');
+      _notice('Todos os dados foram apagados com segurança.');
     }
   }
 
@@ -503,25 +504,9 @@ class _SettingsPageState extends State<SettingsPage> {
     required List<Widget> children,
   }) {
     final colors = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF131826) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: colors.outlineVariant.withOpacity(0.4),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -651,7 +636,6 @@ class _SettingsPageState extends State<SettingsPage> {
     final s = _settings.settings;
     final currentUser = _user.currentUser;
     final colors = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final permState = _permissions.state;
 
     return Scaffold(
@@ -661,38 +645,31 @@ class _SettingsPageState extends State<SettingsPage> {
           SliverToBoxAdapter(
             child: PageFrame(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Campo de Busca
-                    Container(
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF131826) : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: colors.outlineVariant.withOpacity(0.5)),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (v) => setState(() => _searchQuery = v),
-                        decoration: InputDecoration(
-                          hintText: 'Buscar ajustes (tema, notificações, rede, PIN)...',
-                          hintStyle: TextStyle(fontSize: 13.5, color: colors.onSurfaceVariant),
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear_rounded, size: 20),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _searchQuery = '');
-                                  },
-                                )
-                              : null,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        ),
+                    PageHeading(
+                      title: AppText.settings.of(context),
+                      description: 'Gerencie seu perfil, aparência e privacidade.',
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar configurações',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Limpar busca',
+                                icon: const Icon(Icons.clear_rounded),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -711,7 +688,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             avatar: Icon(
                               cat.icon,
                               size: 16,
-                              color: isSelected ? colors.onPrimary : colors.primary,
+                              color: colors.onSurfaceVariant,
                             ),
                             label: Text(cat.label),
                             selected: isSelected,
@@ -738,7 +715,7 @@ class _SettingsPageState extends State<SettingsPage> {
           SliverToBoxAdapter(
             child: PageFrame(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -772,7 +749,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           }
                         },
                       ),
-                    if (_isCategoryVisible('profile') && _matchesSearch('perfil identidade chave apelido qr'))
+                    if (_isCategoryVisible('profile') && _matchesSearch('perfil dados código apelido qr'))
                       Container(
                         margin: const EdgeInsets.only(bottom: 20),
                         padding: const EdgeInsets.all(22),
@@ -807,7 +784,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                           Expanded(
                                             child: Text(
                                               currentUser.nickname.isEmpty
-                                                  ? 'Identidade Local'
+                                                  ? 'Seu Perfil'
                                                   : currentUser.nickname,
                                               style: const TextStyle(
                                                 fontSize: 19,
@@ -826,10 +803,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                       const SizedBox(height: 2),
                                       Row(
                                         children: [
-                                          Icon(Icons.lock_outline_rounded, size: 14, color: colors.primary),
+                                          Icon(Icons.shield_outlined, size: 14, color: colors.primary),
                                           const SizedBox(width: 4),
                                           Text(
-                                            'Chave: ${AppTheme.formatKeyPreview(currentUser.publicKey)}',
+                                            'Código: ${AppTheme.formatKeyPreview(currentUser.publicKey)}',
                                             style: TextStyle(
                                               fontFamily: 'monospace',
                                               fontSize: 12,
@@ -854,10 +831,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                 FilledButton.tonalIcon(
                                   onPressed: () {
                                     Clipboard.setData(ClipboardData(text: currentUser.publicKey));
-                                    _notice('Chave pública copiada!');
+                                    _notice('Código de contato copiado!');
                                   },
                                   icon: const Icon(Icons.copy_rounded, size: 16),
-                                  label: const Text('Copiar Chave'),
+                                  label: const Text('Copiar Código'),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed: _showPublicKeyDialog,
@@ -963,7 +940,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      'O Nexora é 100% P2P direto: transmissões em 4K@60fps não passam por servidores centrais, garantindo privacidade ponta a ponta e máxima taxa de bits.',
+                                      'Conexão direta e ultra rápida: transmissões em até 4K@60fps não passam por servidores lentos, garantindo fluidez máxima e total privacidade.',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1006,15 +983,15 @@ class _SettingsPageState extends State<SettingsPage> {
                           SwitchListTile(
                             secondary: const Icon(Icons.attach_file_rounded),
                             title: const Text('Confirmar Envio de Arquivos & Mídias'),
-                            subtitle: const Text('Exibir diálogo de confirmação prévia antes de iniciar o envio de arquivos P2P'),
+                            subtitle: const Text('Exibir diálogo de confirmação prévia antes de iniciar o envio de arquivos'),
                             value: s.confirmBeforeSendingMedia,
                             onChanged: (val) => _update((prev) => prev.copyWith(confirmBeforeSendingMedia: val)),
                           ),
                           const Divider(height: 1),
                           SwitchListTile(
                             secondary: const Icon(Icons.done_all_rounded),
-                            title: const Text('Confirmações de Leitura P2P'),
-                            subtitle: const Text('Compartilhar recibos de visualização de mensagens com os pares conectados'),
+                            title: const Text('Confirmações de Leitura'),
+                            subtitle: const Text('Exibir recibos de visualização quando a mensagem for lida'),
                             value: s.readReceipts,
                             onChanged: (val) => _update((prev) => prev.copyWith(readReceipts: val)),
                           ),
@@ -1052,14 +1029,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
 
                     // ==========================================
-                    // 3. COMUNIDADES P2P & CANAIS DE TÓPICOS
+                    // 3. COMUNIDADES & CANAIS DE TÓPICOS
                     // ==========================================
                     if (_isCategoryVisible('communities') && _matchesSearch('comunidades canais tópicos grupo flood membros lenta menções'))
                       _buildSectionCard(
                         context: context,
                         icon: Icons.hub_rounded,
-                        title: 'Comunidades P2P & Canais',
-                        subtitle: 'Preferências de alertas, inscrição de canais e convites de grupos descentralizados',
+                        title: 'Comunidades & Canais',
+                        subtitle: 'Preferências de alertas, canais e convites de grupos',
                         children: [
                           _buildChoicePill<String>(
                             context: context,
@@ -1077,7 +1054,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           SwitchListTile(
                             secondary: const Icon(Icons.sync_alt_rounded),
                             title: const Text('Sincronizar Novos Canais Automaticamente'),
-                            subtitle: const Text('Entrar de forma transparente em novos canais de tópicos criados na malha da comunidade'),
+                            subtitle: const Text('Entrar de forma transparente em novos tópicos criados na comunidade'),
                             value: s.communityAutoJoinChannels,
                             onChanged: (val) => _update((prev) => prev.copyWith(communityAutoJoinChannels: val)),
                           ),
@@ -1093,7 +1070,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           SwitchListTile(
                             secondary: const Icon(Icons.group_add_rounded),
                             title: const Text('Receber Convites de Novas Comunidades'),
-                            subtitle: const Text('Permitir que seus contatos P2P enviem convites de comunidades diretamente para você'),
+                            subtitle: const Text('Permitir que seus contatos enviem convites de comunidades diretamente para você'),
                             value: s.allowCommunityInvites,
                             onChanged: (val) => _update((prev) => prev.copyWith(allowCommunityInvites: val)),
                           ),
@@ -1116,7 +1093,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ListTile(
                             leading: const Icon(Icons.folder_shared_rounded),
                             title: const Text('Comunidades Ativas neste Aparelho'),
-                            subtitle: Text('${_user.conversations.where((c) => c.isCommunity).length} comunidade(s) registradas na malha local'),
+                            subtitle: Text('${_user.conversations.where((c) => c.isCommunity).length} comunidade(s) ativas'),
                             trailing: Text(
                               '${_user.conversations.where((c) => c.isCommunity).fold<int>(0, (acc, c) => acc + c.channels.length)} canais no total',
                               style: TextStyle(fontSize: 12, color: colors.primary, fontWeight: FontWeight.bold),
@@ -1128,7 +1105,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     // ==========================================
                     // 4. APARÊNCIA, TEMA & LAYOUT
                     // ==========================================
-                    if (_isCategoryVisible('theme') && _matchesSearch('tema aparência cor fonte amoled balão papel layout'))
+                    if (_isCategoryVisible('theme') && _matchesSearch('tema aparência cor fonte amoled balão papel layout navegação menu lateral animações movimento'))
                       _buildSectionCard(
                         context: context,
                         icon: Icons.palette_outlined,
@@ -1162,7 +1139,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Cor de Destaque Criptográfica',
+                                  'Cor de Destaque',
                                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                                 ),
                                 const SizedBox(height: 4),
@@ -1286,6 +1263,32 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const Divider(height: 1),
 
+                          _buildChoicePill<String>(
+                            context: context,
+                            title: 'Posição do menu',
+                            subtitle: 'O menu lateral fica disponível em janelas mais largas.',
+                            selected: s.navigationStyle,
+                            options: const {
+                              'auto': 'Automática',
+                              'side': 'Lateral',
+                              'bottom': 'Inferior',
+                            },
+                            onSelected: (value) => _update(
+                              (previous) => previous.copyWith(navigationStyle: value),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          SwitchListTile(
+                            secondary: const Icon(Icons.animation_outlined),
+                            title: const Text('Animações'),
+                            subtitle: const Text('Suaviza transições entre telas.'),
+                            value: s.animationsEnabled,
+                            onChanged: (value) => _update(
+                              (previous) => previous.copyWith(animationsEnabled: value),
+                            ),
+                          ),
+                          const Divider(height: 1),
+
                           // Slider de Tamanho da Fonte com Preview
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -1340,12 +1343,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     // ==========================================
                     // 3. SEGURANÇA & PRIVACIDADE
                     // ==========================================
-                    if (_isCategoryVisible('privacy') && _matchesSearch('segurança privacidade criptografia pin furtivo hud bloqueados retenção'))
+                    if (_isCategoryVisible('privacy') && _matchesSearch('segurança privacidade pin furtivo hud bloqueados retenção'))
                       _buildSectionCard(
                         context: context,
                         icon: Icons.shield_outlined,
-                        title: 'Segurança & Privacidade Criptográfica',
-                        subtitle: 'Controles anti-espião, retenção local e proteção de chaves',
+                        title: 'Segurança & Privacidade',
+                        subtitle: 'Controles anti-espião, retenção local e proteção de dados',
                         children: [
                           SwitchListTile(
                             secondary: const Icon(Icons.visibility_off_outlined),
@@ -1357,8 +1360,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           const Divider(height: 1),
                           SwitchListTile(
                             secondary: const Icon(Icons.security_rounded),
-                            title: const Text('HUD de Inspeção Criptográfica'),
-                            subtitle: const Text('Exibe métricas criptográficas, chaves de sessão e handshake no chat'),
+                            title: const Text('Painel de Diagnóstico de Rede'),
+                            subtitle: const Text('Exibe métricas técnicas de latência e estabilidade no chat'),
                             value: s.showSecurityInspector,
                             onChanged: (val) => _update((prev) => prev.copyWith(showSecurityInspector: val)),
                           ),
@@ -1409,8 +1412,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: _exportBackup,
-                                    icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                                    label: const Text('Backup da Chave'),
+                                    icon: const Icon(Icons.shield_outlined, size: 18),
+                                    label: const Text('Cópia de Segurança'),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1512,14 +1515,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
 
                     // ==========================================
-                    // 5. REDE P2P & ESPELHAMENTO
+                    // 5. CONEXÃO & APARELHOS
                     // ==========================================
-                    if (_isCategoryVisible('network') && _matchesSearch('rede p2p stun timeout webrtc espelhar conexão'))
+                    if (_isCategoryVisible('network') && _matchesSearch('conexão stun timeout webrtc espelhar aparelhos rede'))
                       _buildSectionCard(
                         context: context,
                         icon: Icons.sensors_rounded,
-                        title: 'Rede P2P & Conexão Direta',
-                        subtitle: 'Configurações de WebRTC, travessia de NAT e espelhamento',
+                        title: 'Conexão & Aparelhos',
+                        subtitle: 'Estabilidade de sinal, servidores de conexão e aparelhos conectados',
                         children: [
                           ListTile(
                             leading: const Icon(Icons.qr_code_scanner_rounded),
@@ -1539,7 +1542,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           const Divider(height: 1),
                           ListTile(
                             leading: const Icon(Icons.devices_other_rounded),
-                            title: const Text('Dispositivos Espelhados Ativos'),
+                            title: const Text('Dispositivos Conectados'),
                             subtitle: Text('${_user.mirroredDevices.length} dispositivos autorizados'),
                             trailing: const Icon(Icons.chevron_right_rounded),
                             onTap: () {
@@ -1555,13 +1558,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           // Servidor STUN / ICE
                           _buildChoicePill<String>(
                             context: context,
-                            title: 'Servidor STUN (Travessia de NAT P2P)',
-                            subtitle: 'Auxilia na descoberta direta de IP sem rotear o tráfego da conversa',
+                            title: 'Servidor de Apoio à Conexão',
+                            subtitle: 'Facilita a conexão rápida entre você e seus contatos sem intermediar as mensagens',
                             selected: s.stunServer,
                             options: const {
-                              'stun:stun.l.google.com:19302': 'Google STUN (Padrão Global)',
-                              'stun:stun1.l.google.com:19302': 'Google Backup STUN',
-                              'stun:stun.cloudflare.com:3478': 'Cloudflare STUN',
+                              'stun:stun.l.google.com:19302': 'Padrão (Recomendado)',
+                              'stun:stun1.l.google.com:19302': 'Servidor Alternativo',
+                              'stun:stun.cloudflare.com:3478': 'Servidor Cloudflare',
                             },
                             onSelected: (val) => _update((prev) => prev.copyWith(stunServer: val)),
                           ),
@@ -1570,8 +1573,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           // Timeout de Conexão
                           _buildChoicePill<int>(
                             context: context,
-                            title: 'Tempo Limite de Conexão P2P (Handshake)',
-                            subtitle: 'Tempo máximo aguardando a troca de sinais WebRTC',
+                            title: 'Tempo Limite de Conexão',
+                            subtitle: 'Tempo máximo aguardando resposta ao iniciar uma conversa ou chamada',
                             selected: s.connectionTimeoutSeconds,
                             options: const {
                               10: '10s (Rápido)',
@@ -1584,14 +1587,14 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           const Divider(height: 1),
 
-                          // Keep-Alive Ping P2P
+                          // Keep-Alive
                           _buildChoicePill<int>(
                             context: context,
-                            title: 'Frequência de Keep-Alive WebRTC',
-                            subtitle: 'Intervalo de pacotes ping para manter a porta NAT aberta no roteador',
+                            title: 'Verificação Periódica de Conexão',
+                            subtitle: 'Frequência de verificação para manter a chamada ou chat estável em segundo plano',
                             selected: s.keepAliveIntervalSeconds,
                             options: const {
-                              5: '5s (Intenso)',
+                              5: '5s (Máxima)',
                               10: '10s',
                               15: '15s (Recomendado)',
                               30: '30s (Econômico)',
@@ -1602,8 +1605,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
                           SwitchListTile(
                             secondary: const Icon(Icons.sync_rounded),
-                            title: const Text('Reconexão P2P Automática'),
-                            subtitle: const Text('Tentar restabelecer automaticamente conexões de canais WebRTC interrompidos'),
+                            title: const Text('Reconexão Automática'),
+                            subtitle: const Text('Tentar restabelecer automaticamente conexões interrompidas'),
                             value: s.autoReconnectP2P,
                             onChanged: (val) => _update((prev) => prev.copyWith(autoReconnectP2P: val)),
                           ),
@@ -1611,8 +1614,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
                           SwitchListTile(
                             secondary: const Icon(Icons.data_saver_on_rounded),
-                            title: const Text('Modo Economia de Dados P2P'),
-                            subtitle: const Text('Reduz tráfego de diagnóstico de rede e otimiza transferências para planos móveis'),
+                            title: const Text('Modo Economia de Dados'),
+                            subtitle: const Text('Otimiza transferências e reduz uso de rede móvel'),
                             value: s.p2pDataSaver,
                             onChanged: (val) => _update((prev) => prev.copyWith(p2pDataSaver: val)),
                           ),
@@ -1626,7 +1629,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _buildSectionCard(
                         context: context,
                         icon: Icons.storage_rounded,
-                        title: 'Armazenamento & Mídia P2P',
+                        title: 'Armazenamento & Mídia',
                         subtitle: 'Controle de arquivos recebidos e cache local',
                         children: [
                           SwitchListTile(
@@ -1715,9 +1718,9 @@ class _SettingsPageState extends State<SettingsPage> {
                           const Divider(height: 1),
                           ListTile(
                             leading: const BrandMark(size: 32),
-                            title: const Text('Nexora - Comunicação P2P Criptografada'),
+                            title: const Text('Nexora - Comunicação Direta e Privada'),
                             subtitle: const Text(
-                              'Versão 1.0.0 (Build Release) • Criptografia Ed25519 & AES-256-GCM',
+                              'Versão 1.0.0 (Build Release) • Totalmente Seguro & Privado',
                               style: TextStyle(fontSize: 12),
                             ),
                           ),

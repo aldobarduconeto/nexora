@@ -15,6 +15,11 @@ class MainFlutterWindow: NSWindow {
     self.styleMask.insert(.fullSizeContentView)
     self.isMovableByWindowBackground = true
 
+    // Hide native buttons so integrated header controls take full effect cleanly
+    self.standardWindowButton(.closeButton)?.isHidden = true
+    self.standardWindowButton(.miniaturizeButton)?.isHidden = true
+    self.standardWindowButton(.zoomButton)?.isHidden = true
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     let windowChannel = FlutterMethodChannel(
@@ -35,6 +40,9 @@ class MainFlutterWindow: NSWindow {
       case "isMaximized":
         result(self?.isZoomed ?? false)
       case "startDragging":
+        if let event = NSApp.currentEvent {
+          self?.performDrag(with: event)
+        }
         result(nil)
       default:
         result(FlutterMethodNotImplemented)

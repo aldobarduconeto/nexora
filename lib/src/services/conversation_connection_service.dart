@@ -5,9 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:nexora/src/models/conversation.dart';
 import 'package:nexora/src/services/file_transfer_service.dart';
+import 'package:nexora/src/services/identity_protocol.dart';
+import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/message_service.dart';
 import 'package:nexora/src/services/notification_service.dart';
 import 'package:nexora/src/services/p2p_connection_service.dart';
+import 'package:nexora/src/utils/serial_task_queue.dart';
+import 'package:uuid/uuid.dart';
 
 /// A group is a full mesh: no participant forwards another author's messages.
 /// Supports all features (encrypted chat, file transfer, voice/video calls, and screen sharing)
@@ -18,6 +22,8 @@ class ConversationConnectionService extends ChangeNotifier {
     required this.localUserId,
     required int connectionTimeoutSeconds,
     void Function(String)? onNotice,
+    this.historySnapshot,
+    this.currentConversation,
     P2PConnectionService Function(String key)? createPeer,
   }) : _membership =
            (List<String>.from(conversation.participantIds)..sort()).join(',') {
@@ -47,10 +53,19 @@ class ConversationConnectionService extends ChangeNotifier {
     }
     _selected = _peers.keys.isNotEmpty ? _peers.keys.first : '';
     _focusedCallPeer = _selected;
+    _updateHistoryConnections();
   }
 
   final Conversation conversation;
   final String localUserId;
+  final Map<String, String> Function()? historySnapshot;
+  final Conversation? Function()? currentConversation;
+  final _historyPeers = <String>{};
+  final _historyQueues = <String, SerialTaskQueue>{};
+  final _pendingHistory = <String>{};
+  static const _historyPrefix = 'NEXORA_HISTORY_V1:';
+  static String historyDeletionKey(String author, String id) => '$author/$id';
+  String get _historyScope => conversation.isGroup ? conversation.id : _membership;
   final String _membership;
   final _peers = <String, P2PConnectionService>{};
   final _fileTransfers = <String, FileTransferService>{};
@@ -143,8 +158,10 @@ class ConversationConnectionService extends ChangeNotifier {
   }
 
   bool _wasInIncomingCall = false;
+  bool _notificationPending = false;
 
   void _changed() {
+    _updateHistoryConnections();
     if (!_closed) {
       final hasIncoming =
           _peers.values.any((p) => p.callState == P2PCallState.incoming);
@@ -160,7 +177,13 @@ class ConversationConnectionService extends ChangeNotifier {
       } else if (!hasIncoming) {
         _wasInIncomingCall = false;
       }
-      notifyListeners();
+      // Several peers can change during the same call or connection update.
+      if (_notificationPending) return;
+      _notificationPending = true;
+      scheduleMicrotask(() {
+        _notificationPending = false;
+        if (!_closed) notifyListeners();
+      });
     }
   }
 
@@ -297,7 +320,229 @@ class ConversationConnectionService extends ChangeNotifier {
     await _callPeer?.toggleSpeakerphone();
   }
 
-  void _emit(String sender, String content, DateTime sentAt, {DecryptedMessage? original}) {
+  bool _canSyncWith(String peer) {
+    final readCurrent = currentConversation;
+    final current = readCurrent == null ? conversation : readCurrent();
+    if (current == null ||
+        LocalDataService.instance.isBlocked(peer) ||
+        !current.participantIds.contains(peer)) {
+      return false;
+    }
+    final members = [...current.participantIds]..sort();
+    return members.join(',') == _membership;
+  }
+
+  bool _canShareRecord(String record) {
+    final envelope = jsonDecode(record) as Map<String, dynamic>;
+    final payload = envelope['payload'] as Map<String, dynamic>;
+    return payload['scope'] == _historyScope && payload['members'] == _membership;
+  }
+
+  void _updateHistoryConnections() {
+    if (_closed || historySnapshot == null) return;
+    for (final entry in _peers.entries) {
+      if (!entry.value.isConnected || !entry.value.supportsSharedHistory ||
+          !_canSyncWith(entry.key)) {
+        _historyPeers.remove(entry.key);
+      } else if (_historyPeers.add(entry.key)) {
+        unawaited(_offerHistory(entry.value));
+      }
+    }
+  }
+
+  Future<void> _sendHistory(
+    P2PConnectionService peer,
+    Map<String, dynamic> body,
+  ) => peer.sendMessage('$_historyPrefix${jsonEncode(body)}');
+
+  Future<void> _offerHistory(P2PConnectionService peer) async {
+    try {
+      final ids = historySnapshot!().entries
+          .where((entry) => _canShareRecord(entry.value))
+          .map((entry) => entry.key)
+          .toList(growable: false);
+      for (var start = 0; start < ids.length; start += 100) {
+        if (_closed || !peer.isConnected || !_canSyncWith(peer.remotePublicKey)) return;
+        await _sendHistory(peer, {
+          'offer': ids.skip(start).take(100).toList(),
+        });
+      }
+    } catch (_) {
+      // A later connection exchanges a fresh inventory.
+    }
+  }
+
+  Future<void> _receiveHistory(
+    String peerKey,
+    String wire,
+  ) async {
+    if (_closed || historySnapshot == null) return;
+    final peer = _peers[peerKey]!;
+    if (!peer.supportsSharedHistory || !_canSyncWith(peerKey)) return;
+    try {
+      final body = jsonDecode(wire) as Map<String, dynamic>;
+      final offer = body['offer'];
+      final request = body['request'];
+      final record = body['record'];
+      if (offer is List && offer.length <= 100) {
+        final known = historySnapshot!();
+        final missing = offer.whereType<String>().where(
+          (id) => (id.length == 36 || id.length == 81) && !known.containsKey(id),
+        ).toSet();
+        if (missing.isNotEmpty) {
+          await _sendHistory(peer, {'request': missing.toList()});
+        }
+      } else if (request is List && request.length <= 100) {
+        final records = historySnapshot!();
+        for (final id in request.whereType<String>().toSet()) {
+          final signed = records[id];
+          if (_closed || !peer.isConnected || !_canSyncWith(peer.remotePublicKey)) return;
+          if (signed != null && _canShareRecord(signed)) {
+            await _sendHistory(peer, {'record': signed});
+          }
+        }
+      } else if (record is String) {
+        await _acceptHistory(record, peerKey, live: body['live'] == true);
+      }
+    } catch (_) {
+      // Invalid control frames and interrupted transfers never enter the chat.
+    }
+  }
+
+  Future<void> _acceptHistory(String record, String peerKey, {required bool live}) async {
+    final envelope = jsonDecode(record) as Map<String, dynamic>;
+    final unsigned = envelope['payload'] as Map<String, dynamic>;
+    final author = unsigned['identity'] as String;
+    final id = unsigned['id'] as String;
+    final deleted = unsigned['type'] == 'nexora-history-delete-v1';
+    final deletionKey = historyDeletionKey(author, id);
+    final key = deleted ? deletionKey : id;
+    final known = historySnapshot!();
+    if (id.length != 36 ||
+        !conversation.participantIds.contains(author) ||
+        LocalDataService.instance.isBlocked(author) ||
+        known.containsKey(key) ||
+        known.containsKey(deletionKey) ||
+        !_pendingHistory.add(key)) {
+      return;
+    }
+    try {
+      final payload = await IdentityProtocol.verify(record, author);
+      if (_closed || !_canSyncWith(peerKey) ||
+          (!deleted && payload['type'] != 'nexora-history-text-v1') ||
+          payload['scope'] != _historyScope ||
+          payload['members'] != _membership) {
+        return;
+      }
+      final sentAt = DateTime.parse(payload['at'] as String).toUtc();
+      if (deleted) {
+        _emitDeletion(author, id, record, sentAt);
+        _announceHistoryRecord(key, except: peerKey);
+        return;
+      }
+      if (historySnapshot!().containsKey(deletionKey)) return;
+      final content = payload['content'] as String;
+      final rich = jsonDecode(content) as Map<String, dynamic>;
+      if (!_canReplicate(rich)) return;
+      _emit(
+        author,
+        content,
+        sentAt,
+        historyId: id,
+        historyRecord: record,
+        replayed: !live || peerKey != author,
+      );
+      _announceHistoryRecord(key, except: peerKey);
+    } finally {
+      _pendingHistory.remove(key);
+    }
+  }
+
+  void _announceHistoryRecord(String key, {required String except}) {
+    // Let the chat add the verified record to its index before offering it.
+    scheduleMicrotask(() {
+      if (_closed || !historySnapshot!().containsKey(key)) return;
+      for (final peer in _peers.values) {
+        if (peer.remotePublicKey == except ||
+            !peer.isConnected ||
+            !peer.supportsSharedHistory ||
+            !_canSyncWith(peer.remotePublicKey)) {
+          continue;
+        }
+        unawaited(_offerHistoryIds(peer, [key]));
+      }
+    });
+  }
+
+  Future<void> _offerHistoryIds(
+    P2PConnectionService peer,
+    List<String> ids,
+  ) async {
+    try {
+      await _sendHistory(peer, {'offer': ids});
+    } catch (_) {
+      // A later connection exchanges a fresh inventory.
+    }
+  }
+
+  void _emitDeletion(String author, String id, String record, DateTime sentAt) {
+    if (_closed) return;
+    _messages.add(DecryptedMessage(
+      id: id,
+      conversationId: conversation.id,
+      senderId: author,
+      content: '',
+      sentAt: sentAt,
+      historyRecord: record,
+      historyDeleted: true,
+    ));
+  }
+
+  Future<void> deleteSharedMessage(String id) async {
+    final original = historySnapshot?.call()[id];
+    if (_closed || original == null) return;
+    final payload = await IdentityProtocol.verify(original, localUserId);
+    if (payload['id'] != id || payload['type'] != 'nexora-history-text-v1' ||
+        payload['scope'] != _historyScope || payload['members'] != _membership) {
+      throw StateError('A mensagem não pertence a esta conversa.');
+    }
+    final now = DateTime.now().toUtc();
+    final record = await IdentityProtocol.sign({
+      'type': 'nexora-history-delete-v1',
+      'id': id,
+      'identity': localUserId,
+      'scope': _historyScope,
+      'members': _membership,
+      'at': now.toIso8601String(),
+    }, LocalDataService.instance.identityKeyPair);
+    _emitDeletion(localUserId, id, record, now);
+    await Future.wait(_peers.values
+        .where((peer) => peer.isConnected && peer.supportsSharedHistory && _canSyncWith(peer.remotePublicKey))
+        .map((peer) async {
+      try {
+        await _sendHistory(peer, {'record': record});
+      } catch (_) {
+        // Reconnection advertises the persisted deletion again.
+      }
+    }));
+  }
+
+  bool _canReplicate(Map<String, dynamic> rich) =>
+      rich['nx_type'] == 'rich' &&
+      rich['text'] is String &&
+      (rich['mediaType'] == null || rich['mediaType'] == 'text') &&
+      rich['isViewOnce'] != true &&
+      rich['ephemeralSeconds'] == null;
+
+  void _emit(
+    String sender,
+    String content,
+    DateTime sentAt, {
+    DecryptedMessage? original,
+    String? historyId,
+    String? historyRecord,
+    bool replayed = false,
+  }) {
     if (!_closed) {
       if (original != null) {
         _messages.add(
@@ -358,11 +603,14 @@ class ConversationConnectionService extends ChangeNotifier {
 
       _messages.add(
         DecryptedMessage(
-          id: '${++_id}',
+          id: historyId ?? '${++_id}',
+          historyRecord: historyRecord,
+          replayed: replayed,
           conversationId: conversation.id,
           senderId: sender,
           content: text,
           sentAt: sentAt,
+          receivedAt: historyRecord == null ? null : sentAt,
           replyToId: replyToId,
           replySnippet: replySnippet,
           replySender: replySender,
@@ -378,6 +626,7 @@ class ConversationConnectionService extends ChangeNotifier {
         ),
       );
 
+      if (replayed || sender == localUserId) return;
       // Dispara notificação push para a nova mensagem recebida
       unawaited(
         NotificationService.instance.notifyIncomingMessage(
@@ -393,6 +642,14 @@ class ConversationConnectionService extends ChangeNotifier {
   }
 
   void _receive(String peer, DecryptedMessage message) {
+    if (message.content.startsWith(_historyPrefix)) {
+      if (message.senderId == peer) {
+        final queue = _historyQueues.putIfAbsent(peer, SerialTaskQueue.new);
+        final body = message.content.substring(_historyPrefix.length);
+        unawaited(queue.run(() => _receiveHistory(peer, body)));
+      }
+      return;
+    }
     if (message.content.startsWith(_filePrefix)) {
       if (message.senderId == peer) {
         unawaited(_fileTransfers[peer]?.receive(message.content));
@@ -423,6 +680,49 @@ class ConversationConnectionService extends ChangeNotifier {
     if (conversation.isSavedMessages) {
       _emit(localUserId, text, DateTime.now().toUtc());
       return;
+    }
+    if (historySnapshot != null &&
+        _peers.values.any((peer) => peer.isConnected && peer.supportsSharedHistory && _canSyncWith(peer.remotePublicKey)) &&
+        text.startsWith('{"nx_type":"rich"')) {
+      final rich = jsonDecode(text) as Map<String, dynamic>;
+      if (_canReplicate(rich)) {
+        final id = const Uuid().v4();
+        final sentAt = DateTime.now().toUtc();
+        final record = await IdentityProtocol.sign({
+          'type': 'nexora-history-text-v1',
+          'id': id,
+          'identity': localUserId,
+          'scope': _historyScope,
+          'members': _membership,
+          'at': sentAt.toIso8601String(),
+          'content': text,
+        }, LocalDataService.instance.identityKeyPair);
+        final targets = _peers.values.where((peer) => peer.isConnected && _canSyncWith(peer.remotePublicKey)).toList();
+        if (targets.isEmpty) throw StateError('Conecte-se para enviar mensagens.');
+        final frame = {'record': record, 'live': true};
+        if (utf8.encode(jsonEncode(frame)).length < 60 * 1024) {
+          final legacyFrame = conversation.isGroup
+              ? '$_prefix${jsonEncode({'group': conversation.id, 'members': _membership, 'text': text})}'
+              : text;
+          final results = await Future.wait(targets.map((peer) async {
+            try {
+              if (peer.supportsSharedHistory) {
+                await _sendHistory(peer, frame);
+              } else {
+                await peer.sendMessage(legacyFrame);
+              }
+              return true;
+            } catch (_) {
+              return false;
+            }
+          }));
+          if (!results.contains(true)) {
+            throw StateError('Não foi possível enviar. Verifique a conexão.');
+          }
+          _emit(localUserId, text, sentAt, historyId: id, historyRecord: record);
+          return;
+        }
+      }
     }
     if (!conversation.isGroup) {
       final p = _peer;

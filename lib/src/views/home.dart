@@ -17,6 +17,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final _searchController = TextEditingController();
   String _query = '';
   String _chatFilter = 'all';
   final _service = LocalDataService.instance;
@@ -31,6 +32,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _service.removeListener(_refresh);
     _settings.removeListener(_refresh);
     super.dispose();
@@ -48,7 +50,7 @@ class _HomePageState extends State<HomePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Chave pública copiada. Envie ao seu contato para iniciar.',
+            'Seu código de contato foi copiado.',
           ),
         ),
       );
@@ -170,7 +172,7 @@ class _HomePageState extends State<HomePage> {
     final result = await showDialog<({String key, String name})>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Nova conversa P2P'),
+        title: const Text('Nova conversa'),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
@@ -181,7 +183,7 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Informe a chave pública Ed25519 do contato. Após adicionar, vocês poderão conversar por texto, voz e vídeo P2P.',
+                    'Peça à pessoa que copie o código de contato dela no Nexora e cole aqui.',
                   ),
                   const SizedBox(height: 18),
                   TextFormField(
@@ -197,8 +199,8 @@ class _HomePageState extends State<HomePage> {
                       fontSize: 13,
                     ),
                     decoration: InputDecoration(
-                      labelText: 'Chave pública do contato',
-                      hintText: 'Cole a chave Ed25519 (44 caracteres Base64)',
+                      labelText: 'Código de contato',
+                      hintText: 'Cole o código compartilhado com você',
                       suffixIcon: IconButton(
                         tooltip: 'Colar da área de transferência',
                         icon: const Icon(Icons.content_paste_rounded),
@@ -217,11 +219,11 @@ class _HomePageState extends State<HomePage> {
                           value ?? '',
                         );
                         if (normalized == _service.currentUser.publicKey) {
-                          return 'Use a chave de outra pessoa.';
+                          return 'Insira o código de outra pessoa.';
                         }
                         return null;
                       } catch (_) {
-                        return 'Informe uma chave pública Ed25519 válida.';
+                        return 'Informe um código de contato válido.';
                       }
                     },
                   ),
@@ -263,7 +265,7 @@ class _HomePageState extends State<HomePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Não foi possível criar a conversa. Confira a chave pública.',
+            'Não foi possível criar a conversa. Confira o código de contato.',
           ),
         ),
       );
@@ -289,7 +291,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: const Text('Criar grupo em malha P2P'),
+          title: const Text('Criar grupo'),
           content: SizedBox(
             width: 440,
             child: SingleChildScrollView(
@@ -313,7 +315,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Escolha pelo menos dois contatos já autenticados. Em seguida, compartilhe o convite assinado do grupo com eles.',
+                      'Escolha pelo menos dois contatos da sua lista para criar o grupo.',
                     ),
                     if (contacts.length < 2) ...[
                       const SizedBox(height: 12),
@@ -459,7 +461,7 @@ class _HomePageState extends State<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Convite inválido, contato bloqueado ou sua chave não está entre os membros.',
+              'Convite inválido, contato bloqueado ou você não está entre os participantes.',
             ),
           ),
         );
@@ -528,181 +530,93 @@ class _HomePageState extends State<HomePage> {
       return true;
     });
 
-    final conversations = filteredByTab
-        .where(
-          (c) => _service.conversationName(c).toLowerCase().contains(_query),
-        )
-        .toList()
-      ..sort((a, b) {
-        if (a.isPinned != b.isPinned) {
-          return a.isPinned ? -1 : 1;
-        }
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
+    final conversations =
+        filteredByTab
+            .where(
+              (c) =>
+                  _service.conversationName(c).toLowerCase().contains(_query),
+            )
+            .toList()
+          ..sort((a, b) {
+            if (a.isPinned != b.isPinned) {
+              return a.isPinned ? -1 : 1;
+            }
+            return b.updatedAt.compareTo(a.updatedAt);
+          });
 
     return PageFrame(
       child: CustomScrollView(
+        cacheExtent: 800.0,
         slivers: [
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
             sliver: SliverList.list(
               children: [
+                const PageHeading(
+                  title: 'Conversas',
+                  description: 'Envie mensagens e faça chamadas com seus contatos.',
+                ),
+                const SizedBox(height: 20),
                 Wrap(
-                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 8,
+                  runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 12,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Conversas e Chamadas',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -.8,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Mensagens criptografadas, voz e vídeo P2P diretos.',
-                          style: TextStyle(color: colors.onSurfaceVariant),
-                        ),
-                      ],
+                    FilledButton.icon(
+                      onPressed: _create,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Nova conversa'),
                     ),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: _create,
-                          icon: const Icon(Icons.person_add_alt_1_rounded, size: 19),
-                          label: const Text('Nova conversa'),
+                    PopupMenuButton<VoidCallback>(
+                      tooltip: 'Mais ações de conversa',
+                      onSelected: (action) => action(),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: _createGroup,
+                          child: const Text('Criar grupo'),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _createGroup,
-                          icon: const Icon(Icons.group_add_outlined, size: 19),
-                          label: const Text('Criar grupo'),
+                        PopupMenuItem(
+                          value: _joinGroup,
+                          child: const Text('Entrar em grupo'),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _joinGroup,
-                          icon: const Icon(Icons.login_rounded, size: 18),
-                          label: const Text('Entrar em grupo'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: () async {
-                            final vault = await _service.getOrCreateSavedMessages();
-                            _open(vault);
+                        PopupMenuItem(
+                          value: () async {
+                            final vault = await _service
+                                .getOrCreateSavedMessages();
+                            if (mounted) _open(vault);
                           },
-                          icon: const Icon(Icons.bookmark_rounded, size: 18),
-                          label: const Text('Mensagens Salvas'),
+                          child: const Text('Mensagens salvas'),
                         ),
                       ],
+                      icon: const Icon(Icons.more_horiz_rounded),
+                    ),
+                    TextButton.icon(
+                      onPressed: user.publicKey.isEmpty ? null : _copyMyKey,
+                      icon: const Icon(Icons.copy_outlined, size: 18),
+                      label: const Text('Copiar meu código de contato'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
-
-                // Quick Identity & Key Sharing Card (Clean modern aesthetic)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHighest.withValues(alpha: .35),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: colors.outlineVariant.withValues(alpha: .5),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              colors.primary.withValues(alpha: .22),
-                              colors.secondary.withValues(alpha: .12),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colors.primary.withValues(alpha: .3),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.fingerprint_rounded,
-                          color: colors.primary,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.nickname.isEmpty
-                                  ? 'Sua chave pública Ed25519'
-                                  : 'Identidade ativa: ${user.nickname}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.5,
-                                letterSpacing: -.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              user.publicKey.isEmpty
-                                  ? 'Chave indisponível'
-                                  : user.publicKey,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 11.5,
-                                color: colors.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton.tonalIcon(
-                        onPressed: user.publicKey.isEmpty ? null : _copyMyKey,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(44, 38),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: const Text('Copiar'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 TextField(
+                  controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Filtrar conversas por apelido ou grupo...',
+                    hintText: 'Buscar conversas',
                     prefixIcon: const Icon(Icons.search_rounded),
                     suffixIcon: _query.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () => setState(() => _query = ''),
+                            tooltip: 'Limpar busca',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
                           )
                         : null,
                     filled: true,
-                    fillColor: colors.surfaceContainerHighest.withValues(alpha: .25),
+                    fillColor: colors.surfaceContainerHighest.withValues(
+                      alpha: .25,
+                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 13,
@@ -737,33 +651,21 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       _buildFilterChip('all', 'Todas', Icons.forum_rounded),
                       const SizedBox(width: 8),
-                      _buildFilterChip('direct', 'Diretas (1-a-1)', Icons.person_rounded),
+                      _buildFilterChip(
+                        'direct',
+                        'Contatos',
+                        Icons.person_rounded,
+                      ),
                       const SizedBox(width: 8),
-                      _buildFilterChip('groups', 'Grupos', Icons.groups_rounded),
+                      _buildFilterChip(
+                        'groups',
+                        'Grupos',
+                        Icons.groups_rounded,
+                      ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.verified_user_outlined,
-                      size: 15,
-                      color: colors.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Criptografia ponta a ponta • Voz e Vídeo DTLS-SRTP • Armazenamento seguro',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
               ],
             ),
           ),
@@ -794,17 +696,20 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 22),
                     Text(
                       _query.isEmpty
-                          ? 'Nenhuma conversa iniciada ainda'
+                          ? (_chatFilter == 'groups'
+                                ? 'Nenhum grupo'
+                                : 'Nenhuma conversa ainda')
                           : 'Nenhuma conversa encontrada',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       _query.isEmpty
-                          ? 'Adicione a chave pública de um contato para trocar mensagens,\narquivos e realizar chamadas de voz e vídeo P2P.'
+                          ? (_chatFilter == 'groups'
+                                ? 'Crie um grupo ou use um convite para entrar.'
+                                : 'Peça o código de contato de alguém para iniciar uma conversa.')
                           : 'Tente buscar por outro apelido ou nome de grupo.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
@@ -813,11 +718,16 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    if (_query.isEmpty)
+                    if (_query.isEmpty && _chatFilter == 'groups')
+                      FilledButton(
+                        onPressed: _createGroup,
+                        child: const Text('Criar grupo'),
+                      )
+                    else if (_query.isEmpty)
                       FilledButton.icon(
                         onPressed: _create,
                         icon: const Icon(Icons.key_rounded, size: 18),
-                        label: const Text('Adicionar primeiro contato'),
+                        label: const Text('Nova conversa'),
                       ),
                   ],
                 ),
@@ -828,9 +738,19 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
               sliver: SliverList.builder(
                 itemCount: conversations.length,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final idx = conversations.indexWhere((c) => 'conv_${c.id}' == id);
+                    return idx != -1 ? idx : null;
+                  }
+                  return null;
+                },
                 itemBuilder: (context, index) {
-                  final isCompact = _settings.settings.layoutDensity == 'compact';
+                  final isCompact =
+                      _settings.settings.layoutDensity == 'compact';
                   return Padding(
+                    key: ValueKey('conv_${conversations[index].id}'),
                     padding: EdgeInsets.only(bottom: isCompact ? 6 : 10),
                     child: ConversationTile(
                       conversation: conversations[index],
@@ -841,7 +761,8 @@ class _HomePageState extends State<HomePage> {
                       isBlocked: conversationBlocked(conversations[index]),
                       stealthMode: _settings.settings.stealthMode,
                       isCompact: isCompact,
-                      onManage: (action) => _manage(conversations[index], action),
+                      onManage: (action) =>
+                          _manage(conversations[index], action),
                       onOpen: () => _open(conversations[index]),
                     ),
                   );

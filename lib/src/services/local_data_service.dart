@@ -336,8 +336,8 @@ class LocalDataService extends ChangeNotifier {
         final messages = c.messages
             .where(
               (m) =>
-                  retentionMinutes == -1 ||
-                  (retentionMinutes > 0 && m.receivedAt.isAfter(cutoff)),
+                  m.historyDeleted || retentionMinutes <= 0 ||
+                  !m.receivedAt.isBefore(cutoff),
             )
             .toList();
         return c.copyWith(messages: messages);
@@ -426,9 +426,9 @@ class LocalDataService extends ChangeNotifier {
         messages: snapshot,
         updatedAt: DateTime.now(),
       );
-      await _persist(updated);
       _setConversations(updated);
       notifyListeners();
+      await _persist(updated);
     });
   }
 
@@ -442,9 +442,9 @@ class LocalDataService extends ChangeNotifier {
         if (index == -1) throw StateError('Conversa não encontrada.');
         final updated = [..._conversations];
         updated[index] = updated[index].copyWith(title: normalized);
-        await _persist(updated);
         _setConversations(updated);
         notifyListeners();
+        await _persist(updated);
       });
 
   Future<Conversation> getOrCreateSavedMessages() => _tasks.run(() async {
@@ -480,9 +480,9 @@ class LocalDataService extends ChangeNotifier {
     updated[index] = updated[index].copyWith(
       isPinned: !updated[index].isPinned,
     );
-    await _persist(updated);
     _setConversations(updated);
     notifyListeners();
+    await _persist(updated);
   });
 
   Future<void> toggleMuteConversation(String id) => _tasks.run(() async {
@@ -492,9 +492,9 @@ class LocalDataService extends ChangeNotifier {
     updated[index] = updated[index].copyWith(
       isMuted: !updated[index].isMuted,
     );
-    await _persist(updated);
     _setConversations(updated);
     notifyListeners();
+    await _persist(updated);
   });
 
   Future<Conversation> createCommunity({
@@ -668,9 +668,12 @@ class LocalDataService extends ChangeNotifier {
         final index = _conversations.indexWhere((c) => c.id == conversationId);
         if (index == -1) return;
         final conv = _conversations[index];
-        final updatedMessages = channel == null
-            ? <Message>[]
-            : conv.messages.where((m) => m.channel?.toLowerCase() != channel.toLowerCase()).toList();
+        final normalizedChannel = channel?.toLowerCase();
+        final updatedMessages = conv.messages
+            .where((message) => message.historyDeleted ||
+                (normalizedChannel != null &&
+                    message.channel?.toLowerCase() != normalizedChannel))
+            .toList();
         final updated = [..._conversations];
         updated[index] = conv.copyWith(
           messages: updatedMessages,
@@ -811,9 +814,9 @@ class LocalDataService extends ChangeNotifier {
           messages: updatedMsgs,
           pinnedMessageIds: pinnedIds.toList(),
         );
-        await _persist(updated);
         _setConversations(updated);
         notifyListeners();
+        await _persist(updated);
       });
 
   Future<void> toggleStarMessage(String conversationId, int messageId) =>
@@ -830,9 +833,9 @@ class LocalDataService extends ChangeNotifier {
 
         final updated = [..._conversations];
         updated[cIndex] = conv.copyWith(messages: updatedMsgs);
-        await _persist(updated);
         _setConversations(updated);
         notifyListeners();
+        await _persist(updated);
       });
 
   Future<void> toggleMessageReaction(
@@ -870,9 +873,9 @@ class LocalDataService extends ChangeNotifier {
 
     final updated = [..._conversations];
     updated[cIndex] = conv.copyWith(messages: updatedMsgs);
-    await _persist(updated);
     _setConversations(updated);
     notifyListeners();
+    await _persist(updated);
   });
 
   String exportConversationToText(String conversationId) {
@@ -932,16 +935,25 @@ class LocalDataService extends ChangeNotifier {
     notifyListeners();
   });
 
+  static String _serializeConversationsPayload(Map<String, dynamic> payload) {
+    return jsonEncode(payload);
+  }
+
   Future<void> _persist(List<Conversation> conversations) async {
     if (_owner == null) throw StateError('Identidade não inicializada.');
+    final payload = {
+      'v': 2,
+      'owner': _owner,
+      'contacts': Map<String, String>.from(_contactNames),
+      'conversations': conversations.map((c) => c.toMap()).toList(),
+    };
+    final serialized = (conversations.length > 5 ||
+            conversations.any((c) => c.messages.length > 20))
+        ? await compute(_serializeConversationsPayload, payload)
+        : jsonEncode(payload);
     await _write(
       key: _key,
-      value: jsonEncode({
-        'v': 2,
-        'owner': _owner,
-        'contacts': Map<String, String>.from(_contactNames),
-        'conversations': conversations.map((c) => c.toMap()).toList(),
-      }),
+      value: serialized,
     );
   }
 }

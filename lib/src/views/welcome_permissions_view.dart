@@ -187,7 +187,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
     final permState = _permissions.state;
     final nickname = _user.currentUser.nickname?.isNotEmpty == true
         ? _user.currentUser.nickname!
-        : 'Criptonauta';
+        : 'Amigo';
 
     return Scaffold(
       body: SafeArea(
@@ -197,9 +197,12 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 580),
               child: Card(
-                elevation: 4,
+                elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(28),
@@ -223,7 +226,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Olá, $nickname. Sua identidade local está pronta.',
+                              'Olá, $nickname. Seu perfil está pronto para conversar.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 14.5,
@@ -233,7 +236,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'O Nexora é 100% descentralizado e P2P. Suas conversas, mídias e chaves nunca passam por servidores centrais.',
+                              'O Nexora conecta você diretamente com seus contatos, com privacidade total, sem intermediários e sem anúncios.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
@@ -252,13 +255,13 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                       Row(
                         children: [
                           Icon(
-                            Icons.security_update_good_rounded,
+                            Icons.check_circle_outline_rounded,
                             color: colors.primary,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
                           const Text(
-                            'Autorização do Sistema',
+                            'Permissões do Dispositivo',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -268,7 +271,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Para garantir que chamadas, áudios e mensagens funcionem perfeitamente em segundo plano, autorize as seguintes permissões no seu dispositivo:',
+                        'Para garantir que chamadas, áudios e mensagens funcionem perfeitamente, confirme as permissões abaixo:',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: colors.onSurfaceVariant,
@@ -281,9 +284,9 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                       _buildPermissionCard(
                         context: context,
                         icon: Icons.notifications_active_rounded,
-                        title: 'Notificações Push',
+                        title: 'Notificações',
                         description:
-                            'Receba alertas imediatos do sistema operacional ao receber novas mensagens, arquivos ou ligações.',
+                            'Receba avisos instantâneos quando alguém enviar uma mensagem, chamada ou arquivo.',
                         isGranted: permState.notifications,
                       ),
                       _buildPermissionCard(
@@ -291,7 +294,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                         icon: Icons.mic_rounded,
                         title: 'Microfone',
                         description:
-                            'Necessário para realizar chamadas de voz P2P e gravar mensagens de áudio criptografadas.',
+                            'Necessário para realizar chamadas de voz e enviar mensagens de áudio.',
                         isGranted: permState.microphone,
                       ),
                       _buildPermissionCard(
@@ -299,15 +302,15 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                         icon: Icons.videocam_rounded,
                         title: 'Câmera',
                         description:
-                            'Usada para chamadas de vídeo em alta resolução e leitura de QR Codes de pareamento de dispositivos.',
+                            'Usada para chamadas de vídeo e para ler códigos de convite na tela.',
                         isGranted: permState.camera,
                       ),
                       _buildPermissionCard(
                         context: context,
                         icon: Icons.sensors_rounded,
-                        title: 'Dispositivos Próximos / Bluetooth',
+                        title: 'Dispositivos Próximos',
                         description:
-                            'Permite descoberta e conexão ponto a ponto rápida na rede local sem depender de conexão com a internet.',
+                            'Conecte-se facilmente com pessoas próximas conectadas na mesma rede Wi-Fi.',
                         isGranted: permState.bluetooth,
                       ),
 

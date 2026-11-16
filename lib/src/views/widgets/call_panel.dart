@@ -432,12 +432,14 @@ class _CallPanelState extends State<CallPanel> {
   bool _fitContain = false;
   bool _busy = false;
   Timer? _timer;
+  final _clock = ValueNotifier<int>(0);
+  late final Future<void> _rendererInitialization;
 
   @override
   void initState() {
     super.initState();
     widget.connection.addListener(_onConnectionChanged);
-    unawaited(_initRenderers());
+    _rendererInitialization = _initRenderers();
     _startTimerIfNeeded();
   }
 
@@ -477,7 +479,7 @@ class _CallPanelState extends State<CallPanel> {
   void _startTimerIfNeeded() {
     if (widget.connection.callState == P2PCallState.active) {
       _timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
+        _clock.value++;
       });
     } else {
       _timer?.cancel();
@@ -500,10 +502,15 @@ class _CallPanelState extends State<CallPanel> {
   void dispose() {
     _timer?.cancel();
     widget.connection.removeListener(_onConnectionChanged);
-    _localRenderer.srcObject = null;
-    _remoteRenderer.srcObject = null;
-    unawaited(_localRenderer.dispose());
-    unawaited(_remoteRenderer.dispose());
+    _clock.dispose();
+    unawaited(_rendererInitialization.whenComplete(() async {
+      _localRenderer.srcObject = null;
+      _remoteRenderer.srcObject = null;
+      await Future.wait([
+        _localRenderer.dispose(),
+        _remoteRenderer.dispose(),
+      ]);
+    }));
     super.dispose();
   }
 
@@ -630,6 +637,29 @@ class _CallPanelState extends State<CallPanel> {
         ),
       );
     }
+  }
+
+  Widget _buildStatusText(
+    String status, {
+    String prefix = '',
+    TextStyle? style,
+    int? maxLines,
+    TextOverflow? overflow,
+  }) {
+    Widget label(String value) => Text(
+      '$prefix$value',
+      style: style,
+      maxLines: maxLines,
+      overflow: overflow,
+    );
+
+    if (widget.connection.callState != P2PCallState.active) {
+      return label(status);
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: _clock,
+      builder: (context, value, child) => label(_formatDuration()),
+    );
   }
 
   String _formatDuration() {
@@ -841,7 +871,7 @@ class _CallPanelState extends State<CallPanel> {
     final statusText = switch (state) {
       P2PCallState.outgoing => 'Chamando...',
       P2PCallState.connecting => 'Conectando mídia...',
-      P2PCallState.active => _formatDuration(),
+      P2PCallState.active => '',
       _ => '',
     };
     final isSharing =
@@ -988,7 +1018,7 @@ class _CallPanelState extends State<CallPanel> {
             ? 'Iniciando transmissão de tela...'
             : 'Chamando contato...',
       P2PCallState.connecting => 'Estabelecendo mídia P2P...',
-      P2PCallState.active => _formatDuration(),
+      P2PCallState.active => '',
       _ => '',
     };
 
@@ -1102,7 +1132,7 @@ class _CallPanelState extends State<CallPanel> {
                             ),
                             const SizedBox(width: 5),
                           ],
-                          Text(
+                          _buildStatusText(
                             statusLabel,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.75),
@@ -1172,20 +1202,31 @@ class _CallPanelState extends State<CallPanel> {
                                 color: const Color(0xFF62E0BD),
                               ),
                               const SizedBox(width: 6),
-                              Text(
-                                widget.connection.isRemoteScreenSharing
-                                    ? 'Tela compartilhada • $statusLabel'
-                                    : widget.connection.isScreenSharing
-                                    ? 'Transmitindo tela • $statusLabel'
-                                    : hasRemoteVideo
-                                    ? 'DTLS-SRTP P2P • $statusLabel'
-                                    : 'Criptografia P2P Direta',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w500,
+                              if (widget.connection.isRemoteScreenSharing ||
+                                  widget.connection.isScreenSharing ||
+                                  hasRemoteVideo)
+                                _buildStatusText(
+                                  statusLabel,
+                                  prefix: widget.connection.isRemoteScreenSharing
+                                      ? 'Tela compartilhada • '
+                                      : widget.connection.isScreenSharing
+                                      ? 'Transmitindo tela • '
+                                      : 'DTLS-SRTP P2P • ',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                )
+                              else
+                                const Text(
+                                  'Criptografia P2P Direta',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),

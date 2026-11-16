@@ -1,29 +1,50 @@
-import 'package:nexora/src/utils/serial_task_queue.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:nexora/src/utils/serial_task_queue.dart';
 
-/// Keeps Android's process eligible to run while a user-started P2P session is active.
-/// Other platforms retain the session without a native background entitlement.
+/// Each conversation holds a lease on Android's shared foreground service.
 class BackgroundConnectionService {
   BackgroundConnectionService({MethodChannel? channel, bool? android})
-    : _channel = channel ?? const MethodChannel('nexora/background_connection'),
+    : _service = channel == null ? _sharedService : _ForegroundService(channel),
       _android = android ?? (defaultTargetPlatform == TargetPlatform.android);
-  final MethodChannel _channel;
-  final bool _android;
-  bool _active = false;
-  final _tasks = SerialTaskQueue();
 
-  Future<void> start() => _tasks.run(() async {
-    if (_active) return;
-    if (_android && await _channel.invokeMethod<bool>('start') != true) {
+  static final _sharedService = _ForegroundService(
+    const MethodChannel('nexora/background_connection'),
+  );
+
+  final _ForegroundService _service;
+  final bool _android;
+
+  Future<void> start() async {
+    if (_android) await _service.acquire(this);
+  }
+
+  Future<void> stop() async {
+    if (_android) await _service.release(this);
+  }
+}
+
+class _ForegroundService {
+  _ForegroundService(this._channel);
+
+  final MethodChannel _channel;
+  final _tasks = SerialTaskQueue();
+  final _owners = <BackgroundConnectionService>{};
+
+  Future<void> acquire(
+    BackgroundConnectionService owner,
+  ) => _tasks.run(() async {
+    if (_owners.contains(owner)) return;
+    if (_owners.isEmpty && await _channel.invokeMethod<bool>('start') != true) {
       throw StateError('Não foi possível ativar a conexão em segundo plano.');
     }
-    _active = true;
+    _owners.add(owner);
   });
 
-  Future<void> stop() => _tasks.run(() async {
-    if (!_active) return;
-    if (_android) await _channel.invokeMethod<void>('stop');
-    _active = false;
-  });
+  Future<void> release(BackgroundConnectionService owner) =>
+      _tasks.run(() async {
+        if (!_owners.contains(owner)) return;
+        if (_owners.length == 1) await _channel.invokeMethod<void>('stop');
+        _owners.remove(owner);
+      });
 }

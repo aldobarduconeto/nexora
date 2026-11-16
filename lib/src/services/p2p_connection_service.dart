@@ -53,6 +53,8 @@ class P2PConnectionService extends ChangeNotifier {
   static const _callPrefix = 'NEXORA_CALL_V1:';
 
   String? _sessionId;
+  bool _supportsSharedHistory = false;
+  bool get supportsSharedHistory => _supportsSharedHistory;
   String? _offerDigest;
   bool _answerAccepted = false;
   final StreamController<DecryptedMessage> _messageController =
@@ -143,6 +145,7 @@ class P2PConnectionService extends ChangeNotifier {
     await _resetPeerConnection();
     _ephemeralKeyPair = await _x25519.newKeyPair();
     _sessionId = decodedOffer.session;
+    _supportsSharedHistory = decodedOffer.supportsSharedHistory;
     _offerDigest = base64Encode(
       (await _sha256.hash(utf8.encode(signalingData))).bytes,
     );
@@ -171,6 +174,7 @@ class P2PConnectionService extends ChangeNotifier {
       signalingData,
       expectedType: 'answer',
     );
+    _supportsSharedHistory = answer.supportsSharedHistory;
     await _deriveMessageKey(answer.publicKey);
     await _peerConnection!.setRemoteDescription(answer.description);
     _answerAccepted = true;
@@ -369,6 +373,7 @@ class P2PConnectionService extends ChangeNotifier {
       RTCSessionDescription description,
       SimplePublicKey publicKey,
       String session,
+      bool supportsSharedHistory,
     })
   >
   _decodeDescription(
@@ -408,6 +413,7 @@ class P2PConnectionService extends ChangeNotifier {
       ),
       publicKey: SimplePublicKey(keyBytes, type: KeyPairType.x25519),
       session: session,
+      supportsSharedHistory: decoded['sharedHistory'] == 1,
     );
   }
 
@@ -415,6 +421,7 @@ class P2PConnectionService extends ChangeNotifier {
     final key = await _ephemeralKeyPair!.extractPublicKey();
     return IdentityProtocol.sign({
       'v': 2,
+      'sharedHistory': 1,
       'type': description.type,
       'sdp': networkConfiguration.signalingSdp(description.sdp!),
       'publicKey': base64Encode(key.bytes),
@@ -539,6 +546,7 @@ class P2PConnectionService extends ChangeNotifier {
     _messageService = null;
     _ephemeralKeyPair = null;
     _sessionId = null;
+    _supportsSharedHistory = false;
     _offerDigest = null;
     _answerAccepted = false;
     _profileSent = false;

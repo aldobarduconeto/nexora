@@ -114,5 +114,8 @@ class P2PNetworkConfiguration {
         },
     ],
     'iceTransportPolicy': relayOnly ? 'relay' : 'all',
+    'bundlePolicy': 'max-bundle',
+    'rtcpMuxPolicy': 'require',
+    'sdpSemantics': 'unified-plan',
   };
 }

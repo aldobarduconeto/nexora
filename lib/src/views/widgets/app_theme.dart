@@ -216,6 +216,37 @@ class _NoTransition extends PageTransitionsBuilder {
   ) => child;
 }
 
+class PageHeading extends StatelessWidget {
+  const PageHeading({super.key, required this.title, required this.description});
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.headlineLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          description,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class PageFrame extends StatelessWidget {
   const PageFrame({super.key, required this.child, this.maxWidth = 920});
   final Widget child;
@@ -235,40 +266,13 @@ class BrandMark extends StatelessWidget {
   final double size;
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * .28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colors.primary.withValues(alpha: 0.22),
-            colors.primary.withValues(alpha: 0.05),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.primary.withValues(alpha: 0.18),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: colors.primary.withValues(alpha: 0.35),
-          width: 1.2,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(size * .26),
-        child: Image.asset(
-          'assets/icon.png',
-          width: size,
-          height: size,
-          filterQuality: FilterQuality.high,
-        ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * .24),
+      child: Image.asset(
+        'assets/icon.png',
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.high,
       ),
     );
   }

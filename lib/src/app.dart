@@ -291,85 +291,291 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       builder: (dialogCtx) => StatefulBuilder(
         builder: (context, setDialogState) {
           final colors = Theme.of(context).colorScheme;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           String q = '';
-          return AlertDialog(
-            contentPadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            content: SizedBox(
-              width: 520,
-              height: 400,
+
+          final isMobile = MediaQuery.sizeOf(context).width < 600;
+          final maxH = (MediaQuery.sizeOf(context).height * 0.78).clamp(320.0, 520.0);
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+            backgroundColor: isDark ? const Color(0xFF111728) : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 540, maxHeight: maxH),
               child: StatefulBuilder(
                 builder: (context, setInnerState) {
-                  final matches = _user.conversations.where((c) {
+                  final queryLower = q.toLowerCase();
+
+                  final matchingConversations = _user.conversations.where((c) {
+                    if (queryLower.isEmpty) return true;
                     final name = _user.conversationName(c).toLowerCase();
-                    return name.contains(q.toLowerCase());
+                    final lastMsg = c.messages.isNotEmpty ? c.messages.last.content.toLowerCase() : '';
+                    return name.contains(queryLower) || lastMsg.contains(queryLower);
+                  }).take(queryLower.isEmpty ? 5 : 20).toList();
+
+                  final allActions = [
+                    (
+                      id: 'nova_conversa',
+                      title: 'Nova conversa direta P2P',
+                      icon: Icons.person_add_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        _showNewConversationDialog(context);
+                      },
+                    ),
+                    (
+                      id: 'novo_grupo',
+                      title: 'Criar grupo P2P',
+                      icon: Icons.group_add_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        setState(() => _index = 0);
+                        ConversationTabsService.instance.openHome();
+                      },
+                    ),
+                    (
+                      id: 'vault',
+                      title: 'Mensagens Salvas (Cofre Criptografado)',
+                      icon: Icons.bookmark_rounded,
+                      action: () async {
+                        Navigator.pop(dialogCtx);
+                        final vault = await _user.getOrCreateSavedMessages();
+                        ConversationTabsService.instance.openConversation(
+                          vault,
+                          title: 'Mensagens Salvas',
+                        );
+                      },
+                    ),
+                    (
+                      id: 'comunidades',
+                      title: 'Explorar Comunidades P2P',
+                      icon: Icons.hub_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        setState(() => _index = 1);
+                        ConversationTabsService.instance.openHome();
+                      },
+                    ),
+                    (
+                      id: 'tema',
+                      title: isDark ? 'Ativar Modo Claro' : 'Ativar Modo Escuro',
+                      icon: isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        _settings.updateSetting((s) => s.copyWith(isDarkMode: !s.isDarkMode));
+                      },
+                    ),
+                    (
+                      id: 'stealth',
+                      title: 'Alternar Modo Furtivo (Anti-Ombro)',
+                      icon: Icons.visibility_off_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        _settings.updateSetting((s) => s.copyWith(stealthMode: !s.stealthMode));
+                      },
+                    ),
+                    (
+                      id: 'chave',
+                      title: 'Copiar meu código de contato P2P',
+                      icon: Icons.copy_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        _copyOwnKey(context);
+                      },
+                    ),
+                    (
+                      id: 'configuracoes',
+                      title: 'Abrir Configurações',
+                      icon: Icons.tune_rounded,
+                      action: () {
+                        Navigator.pop(dialogCtx);
+                        setState(() => _index = 2);
+                        ConversationTabsService.instance.openHome();
+                      },
+                    ),
+                  ];
+
+                  final matchingActions = allActions.where((a) {
+                    if (queryLower.isEmpty) return true;
+                    return a.title.toLowerCase().contains(queryLower);
                   }).toList();
 
                   return Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      TextField(
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: 'Buscar conversa ou grupo...',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          filled: true,
-                          fillColor: colors.surfaceContainerHighest.withValues(alpha: 0.3),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: colors.outlineVariant),
+                      // Header Search Bar
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        child: TextField(
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: 'Buscar conversas, mensagens ou digitar comando...',
+                            hintStyle: TextStyle(
+                              fontSize: 13,
+                              color: colors.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
+                            prefixIcon: Icon(Icons.search_rounded, color: colors.primary, size: 20),
+                            suffixIcon: q.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded, size: 18),
+                                    onPressed: () => setInnerState(() => q = ''),
+                                  )
+                                : (isMobile
+                                    ? IconButton(
+                                        icon: const Icon(Icons.close_rounded, size: 20),
+                                        onPressed: () => Navigator.pop(dialogCtx),
+                                      )
+                                    : Container(
+                                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                                          borderRadius: BorderRadius.circular(5),
+                                          border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
+                                        ),
+                                        child: Text(
+                                          'ESC',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: colors.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      )),
+                            filled: true,
+                            fillColor: colors.surfaceContainerHighest.withValues(alpha: 0.35),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.3)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: colors.primary.withValues(alpha: 0.7), width: 1.5),
+                            ),
                           ),
+                          onChanged: (val) => setInnerState(() => q = val.trim()),
                         ),
-                        onChanged: (val) => setInnerState(() => q = val.trim()),
                       ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: matches.isEmpty
-                            ? Center(
+                      const Divider(height: 1),
+
+                      // Results List
+                      Flexible(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          shrinkWrap: true,
+                          children: [
+                            if (matchingConversations.isNotEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
                                 child: Text(
-                                  'Nenhuma conversa encontrada.',
-                                  style: TextStyle(color: colors.onSurfaceVariant),
+                                  queryLower.isEmpty ? 'CONVERSAS RECENTES' : 'CONVERSAS ENCONTRADAS',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                    color: colors.onSurfaceVariant.withValues(alpha: 0.7),
+                                  ),
                                 ),
-                              )
-                            : ListView.builder(
-                                itemCount: matches.length,
-                                itemBuilder: (context, i) {
-                                  final conv = matches[i];
-                                  final name = _user.conversationName(conv);
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      child: Icon(
-                                        conv.isSavedMessages
-                                            ? Icons.bookmark_rounded
-                                            : (conv.isGroup
-                                                ? Icons.groups_rounded
-                                                : Icons.person_rounded),
-                                        size: 18,
-                                      ),
-                                    ),
-                                    title: Text(name),
-                                    subtitle: Text(
-                                      conv.isSavedMessages
-                                          ? 'Cofre Pessoal'
-                                          : (conv.isGroup
-                                              ? 'Grupo P2P'
-                                              : (conv.isCommunity
-                                                  ? 'Comunidade'
-                                                  : 'Conversa Direta')),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: colors.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    onTap: () {
-                                      Navigator.pop(dialogCtx);
-                                      ConversationTabsService.instance.openConversation(
-                                        conv,
-                                        title: name,
-                                      );
-                                    },
-                                  );
-                                },
                               ),
+                              for (final conv in matchingConversations) ...[
+                                ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  leading: CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: colors.primary.withValues(alpha: 0.12),
+                                    child: Icon(
+                                      conv.isSavedMessages
+                                          ? Icons.bookmark_rounded
+                                          : (conv.isGroup
+                                              ? Icons.groups_rounded
+                                              : (conv.isCommunity ? Icons.hub_rounded : Icons.person_rounded)),
+                                      size: 16,
+                                      color: colors.primary,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    _user.conversationName(conv),
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(
+                                    conv.messages.isNotEmpty
+                                        ? conv.messages.last.content
+                                        : (conv.isSavedMessages ? 'Cofre Pessoal Criptografado' : 'Sem mensagens ainda'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(dialogCtx);
+                                    ConversationTabsService.instance.openConversation(
+                                      conv,
+                                      title: _user.conversationName(conv),
+                                    );
+                                  },
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                            ],
+
+                            if (matchingActions.isNotEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+                                child: Text(
+                                  'AÇÕES RÁPIDAS',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                    color: colors.onSurfaceVariant.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ),
+                              for (final act in matchingActions) ...[
+                                ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  leading: Icon(act.icon, size: 18, color: colors.onSurfaceVariant),
+                                  title: Text(
+                                    act.title,
+                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+                                  ),
+                                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 11),
+                                  onTap: act.action,
+                                ),
+                              ],
+                            ],
+
+                            if (matchingConversations.isEmpty && matchingActions.isEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 36),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_off_rounded, size: 36, color: colors.onSurfaceVariant.withValues(alpha: 0.4)),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Nenhum resultado para "$q"',
+                                        style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
                   );
@@ -412,11 +618,21 @@ class _AppState extends State<App> with WidgetsBindingObserver {
             ),
             disableAnimations: media.disableAnimations || !s.animationsEnabled,
           ),
-          child: Stack(
-            children: [
-              child!,
-              const PushNotificationBanner(),
-            ],
+          child: CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyK, control: true): () {
+                _showQuickSearchDialog(context);
+              },
+              const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () {
+                _showQuickSearchDialog(context);
+              },
+            },
+            child: Stack(
+              children: [
+                child!,
+                const PushNotificationBanner(),
+              ],
+            ),
           ),
         );
       },
@@ -487,7 +703,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               return Scaffold(
                 body: Column(
                   children: [
-                    const IntegratedHeaderBar(minimal: true),
+                    IntegratedHeaderBar(
+                      minimal: true,
+                      onToggleTheme: () => _settings.updateSetting(
+                        (st) => st.copyWith(isDarkMode: !st.isDarkMode),
+                      ),
+                    ),
                     Expanded(
                       child: WelcomePermissionsView(
                         onCompleted: () => setState(() {}),
@@ -502,7 +723,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           return Scaffold(
             body: Column(
               children: [
-                const IntegratedHeaderBar(minimal: true),
+                IntegratedHeaderBar(
+                  minimal: true,
+                  onToggleTheme: () => _settings.updateSetting(
+                    (st) => st.copyWith(isDarkMode: !st.isDarkMode),
+                  ),
+                ),
                 Expanded(
                   child: SignInPage(
                     onSignedIn: () => setState(() => _initialization = _initialize()),
@@ -524,7 +750,6 @@ class _AppState extends State<App> with WidgetsBindingObserver {
         'bottom' => false,
         _ => constraints.maxWidth >= 820,
       };
-      final colors = Theme.of(context).colorScheme;
       final homeContent = IndexedStack(
         index: _index,
         children: const [HomePage(), CommunitiesPage(), SettingsPage()],
@@ -534,53 +759,55 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       final conversationTabs =
           tabsService.tabs.where((t) => !t.isHome).toList();
 
-      Widget bodyContent;
-      if (tabsService.isHomeActive) {
-        bodyContent = wide
-            ? Row(
-                children: [
-                  _ModernActivityRail(
-                    selectedIndex: _index,
-                    onDestinationSelected: (value) =>
-                        setState(() => _index = value),
-                    extended: constraints.maxWidth >= 1140,
-                    onOpenVault: () async {
-                      final vault = await _user.getOrCreateSavedMessages();
-                      ConversationTabsService.instance.openConversation(
-                        vault,
-                        title: 'Mensagens Salvas',
-                      );
-                    },
-                    onToggleTheme: () {
-                      _settings.updateSetting(
-                        (st) => st.copyWith(isDarkMode: !st.isDarkMode),
-                      );
-                    },
-                    isDarkMode: s.isDarkMode,
-                  ),
-                  Expanded(child: homeContent),
-                ],
-              )
-            : homeContent;
-      } else {
-        final activeIndex = conversationTabs.indexWhere(
-          (t) => t.id == tabsService.activeTab.id,
-        );
-        bodyContent = IndexedStack(
-          index: activeIndex != -1 ? activeIndex : 0,
-          children: [
-            for (final tab in conversationTabs)
-              KeyedSubtree(
-                key: ValueKey('tab_${tab.id}'),
+      final homeLayout = wide
+        ? Row(
+            children: [
+              _ModernActivityRail(
+                selectedIndex: _index,
+                onDestinationSelected: (value) =>
+                    setState(() => _index = value),
+                extended: constraints.maxWidth >= 820,
+                onOpenVault: () async {
+                  final vault = await _user.getOrCreateSavedMessages();
+                  ConversationTabsService.instance.openConversation(
+                    vault,
+                    title: 'Mensagens Salvas',
+                  );
+                },
+                onToggleTheme: () {
+                  _settings.updateSetting(
+                    (st) => st.copyWith(isDarkMode: !st.isDarkMode),
+                  );
+                },
+                isDarkMode: s.isDarkMode,
+              ),
+              Expanded(child: homeContent),
+            ],
+          )
+        : homeContent;
+
+      final bodyContent = IndexedStack(
+        index: tabsService.isHomeActive
+            ? 0
+            : conversationTabs.indexWhere(
+                (tab) => tab.id == tabsService.activeTab.id,
+              ) + 1,
+        children: [
+          homeLayout,
+          for (final tab in conversationTabs)
+            KeyedSubtree(
+              key: ValueKey('tab_${tab.id}'),
+              child: TickerMode(
+                enabled: tab.id == tabsService.activeTab.id,
                 child: P2PChatPage(
                   conversation: tab.conversation!,
                   conversationTitle: tab.title,
                   isTabMode: true,
                 ),
               ),
-          ],
-        );
-      }
+            ),
+        ],
+      );
 
       return Scaffold(
         body: Column(
@@ -589,55 +816,48 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               onNewConversation: () => _showNewConversationDialog(context),
               onSearchPressed: () => _showQuickSearchDialog(context),
               onNotificationsPressed: () => _showNotificationsSheet(context),
+              onToggleTheme: () => _settings.updateSetting(
+                (st) => st.copyWith(isDarkMode: !st.isDarkMode),
+              ),
+              onOpenSettings: () {
+                setState(() => _index = 2);
+                ConversationTabsService.instance.openHome();
+              },
+              onOpenVault: () async {
+                final vault = await _user.getOrCreateSavedMessages();
+                ConversationTabsService.instance.openConversation(
+                  vault,
+                  title: 'Mensagens Salvas',
+                );
+              },
             ),
             Expanded(child: bodyContent),
           ],
         ),
         bottomNavigationBar: (wide || !tabsService.isHomeActive)
             ? null
-            : Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: colors.outlineVariant.withValues(alpha: 0.7),
+            : NavigationBar(
+                height: 64,
+                selectedIndex: _index,
+                onDestinationSelected: (value) =>
+                    setState(() => _index = value),
+                destinations: [
+                  NavigationDestination(
+                    icon: Icon(Icons.chat_bubble_outline_rounded),
+                    selectedIcon: Icon(Icons.chat_bubble_rounded),
+                    label: AppText.chats.of(context),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: NavigationBar(
-                    height: 64,
-                    backgroundColor: Colors.transparent,
-                    selectedIndex: _index,
-                    onDestinationSelected: (value) =>
-                        setState(() => _index = value),
-                    destinations: [
-                      NavigationDestination(
-                        icon: Icon(Icons.chat_bubble_outline_rounded),
-                        selectedIcon: Icon(Icons.chat_bubble_rounded),
-                        label: AppText.chats.of(context),
-                      ),
-                      NavigationDestination(
-                        icon: Icon(Icons.hub_outlined),
-                        selectedIcon: Icon(Icons.hub_rounded),
-                        label: AppText.communities.of(context),
-                      ),
-                      NavigationDestination(
-                        icon: Icon(Icons.tune_rounded),
-                        selectedIcon: Icon(Icons.tune_rounded),
-                        label: AppText.settings.of(context),
-                      ),
-                    ],
+                  NavigationDestination(
+                    icon: Icon(Icons.hub_outlined),
+                    selectedIcon: Icon(Icons.hub_rounded),
+                    label: AppText.communities.of(context),
                   ),
-                ),
+                  NavigationDestination(
+                    icon: Icon(Icons.tune_rounded),
+                    selectedIcon: Icon(Icons.tune_rounded),
+                    label: AppText.settings.of(context),
+                  ),
+                ],
               ),
       );
     },

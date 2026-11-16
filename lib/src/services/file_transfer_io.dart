@@ -22,8 +22,8 @@ class FileTransferService {
 
   final Future<String?> Function(String name) _chooseDirectory;
   final Duration partTimeout;
-  static const chunkSize = 12 * 1024;
-  static const maxWindow = 8;
+  static const chunkSize = 32 * 1024;
+  static const maxWindow = 24;
   final _receiving = SerialTaskQueue();
   final Map<int, Completer<bool>> _pending = {};
   int _window = 1;
@@ -204,7 +204,7 @@ class FileTransferService {
       }
       return;
     }
-    if (_queued >= maxWindow + 2) {
+    if (_queued >= maxWindow * 2 + 8) {
       try {
         await _frame({
           'op': 'ack',

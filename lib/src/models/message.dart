@@ -2,6 +2,9 @@ import 'dart:convert';
 
 class Message {
   final int messageId;
+  final String? historyId;
+  final String? historyRecord;
+  final bool historyDeleted;
   final DateTime sentAt;
   final String textMsg;
   final String senderId;
@@ -33,6 +36,9 @@ class Message {
 
   Message({
     required this.messageId,
+    this.historyId,
+    this.historyRecord,
+    this.historyDeleted = false,
     required this.sentAt,
     required this.textMsg,
     required this.senderId,
@@ -59,6 +65,8 @@ class Message {
 
   Message copyWith({
     int? messageId,
+    String? historyId,
+    String? historyRecord,
     DateTime? sentAt,
     String? textMsg,
     String? senderId,
@@ -84,6 +92,9 @@ class Message {
   }) {
     return Message(
       messageId: messageId ?? this.messageId,
+      historyId: historyId ?? this.historyId,
+      historyRecord: historyRecord ?? this.historyRecord,
+      historyDeleted: historyDeleted,
       sentAt: sentAt ?? this.sentAt,
       textMsg: textMsg ?? this.textMsg,
       senderId: senderId ?? this.senderId,
@@ -111,6 +122,9 @@ class Message {
 
   Map<String, dynamic> toMap() => {
     'messageId': messageId,
+    if (historyId != null) 'historyId': historyId,
+    if (historyRecord != null) 'historyRecord': historyRecord,
+    if (historyDeleted) 'historyDeleted': true,
     'sentAt': sentAt.toUtc().toIso8601String(),
     'textMsg': textMsg,
     'senderId': senderId,
@@ -168,6 +182,9 @@ class Message {
 
     return Message(
       messageId: map['messageId'] as int,
+      historyId: map['historyId'] as String?,
+      historyRecord: map['historyRecord'] as String?,
+      historyDeleted: map['historyDeleted'] == true,
       sentAt: DateTime.parse(map['sentAt'] as String).toLocal(),
       textMsg: map['textMsg'] as String? ?? '',
       senderId: map['senderId'] as String? ?? '',

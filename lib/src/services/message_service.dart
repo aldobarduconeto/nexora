@@ -9,6 +9,9 @@ import 'package:nexora/src/utils/serial_task_queue.dart';
 /// Mensagem recebida e descriptografada com suporte a respostas, mídias e reações.
 class DecryptedMessage {
   final String id;
+  final String? historyRecord;
+  final bool historyDeleted;
+  final bool replayed;
   final String conversationId;
   final String senderId;
   final String content;
@@ -35,6 +38,9 @@ class DecryptedMessage {
 
   DecryptedMessage({
     required this.id,
+    this.historyRecord,
+    this.historyDeleted = false,
+    this.replayed = false,
     required this.conversationId,
     required this.senderId,
     required this.content,
@@ -84,6 +90,9 @@ class DecryptedMessage {
   }) {
     return DecryptedMessage(
       id: id ?? this.id,
+      historyRecord: historyRecord,
+      historyDeleted: historyDeleted,
+      replayed: replayed,
       conversationId: conversationId ?? this.conversationId,
       senderId: senderId ?? this.senderId,
       content: content ?? this.content,
@@ -183,7 +192,7 @@ class MessageService {
         if (_closed ||
             message.isBinary ||
             message.text.length > _maxMessageLength * 2 ||
-            _pendingIncoming >= 32) {
+            _pendingIncoming >= 128) {
           return;
         }
         _pendingIncoming++;

@@ -95,7 +95,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Escaneie com outro dispositivo Nexora ou copie o código criptografado abaixo para entrar nesta comunidade P2P:',
+                    'Escaneie com outro dispositivo ou copie o código de convite abaixo para entrar nesta comunidade:',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
@@ -513,7 +513,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   const SizedBox(height: 20),
                   const Divider(),
 
-                  // Seção: Membros da Malha
+                  // Seção: Membros
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -522,7 +522,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                           Icon(Icons.people_outline_rounded, color: colors.primary, size: 20),
                           const SizedBox(width: 8),
                           Text(
-                            'Membros na Malha (${comm.participantIds.length})',
+                            'Membros (${comm.participantIds.length})',
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -613,8 +613,8 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   // Seção: Ações e Convite
                   ListTile(
                     leading: const Icon(Icons.qr_code_2_rounded, color: Colors.tealAccent),
-                    title: const Text('Convite Criptografado & QR Code'),
-                    subtitle: const Text('Exibir QR Code e código assinado para novos membros'),
+                    title: const Text('Código de Convite & QR Code'),
+                    subtitle: const Text('Exibir QR Code e código para novos membros'),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => _showInviteDialog(comm),
                   ),
@@ -663,7 +663,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                       final confirmed = await confirmAction(
                         context,
                         title: 'Sair da comunidade?',
-                        description: 'Você deixará de participar desta comunidade P2P neste dispositivo.',
+                        description: 'Você deixará de participar desta comunidade neste dispositivo.',
                         action: 'Sair e Excluir',
                       );
                       if (confirmed) {
@@ -819,7 +819,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (context, setDlgState) => AlertDialog(
-          title: const Text('Nova Comunidade em Malha P2P'),
+          title: const Text('Nova Comunidade'),
           content: SizedBox(
             width: 440,
             child: SingleChildScrollView(
@@ -830,7 +830,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Comunidades reúnem pessoas em canais de tópicos separados com criptografia ponta a ponta.',
+                      'Comunidades reúnem pessoas em canais organizados para cada assunto.',
                       style: TextStyle(fontSize: 13),
                     ),
                     const SizedBox(height: 16),
@@ -973,7 +973,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Entrar em comunidade ou grupo P2P'),
+        title: const Text('Entrar em comunidade ou grupo'),
         content: SizedBox(
           width: 440,
           child: Form(
@@ -983,7 +983,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Cole o convite assinado recebido de um membro da comunidade.',
+                  'Cole o código de convite recebido de um participante.',
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -1063,93 +1063,17 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
     return PageFrame(
       maxWidth: 960,
       child: CustomScrollView(
+        cacheExtent: 800.0,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Header
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              colors.primary,
-                              colors.primary.withValues(alpha: .7),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.primary.withValues(alpha: .28),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.hub_rounded,
-                          color: colors.onPrimary,
-                          size: 26,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Text(
-                                  'Comunidades P2P',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -.5,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: colors.primary.withValues(alpha: .15),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '${communities.length}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: colors.primary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Grupos descentralizados organizados por múltiplos canais de tópicos com criptografia ponta a ponta.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colors.onSurfaceVariant,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  const PageHeading(
+                    title: 'Comunidades',
+                    description: 'Participe de grupos com canais para cada assunto.',
                   ),
                   const SizedBox(height: 20),
 
@@ -1227,7 +1151,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                         Text(
                           _query.isNotEmpty
                               ? 'Tente outro termo de busca.'
-                              : 'Crie um espaço P2P para seu projeto, equipe ou amigos com canais de tópicos e discussões criptografadas.',
+                              : 'Crie um espaço para seu projeto, equipe ou amigos com canais organizados e conversas privadas.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13,
@@ -1254,6 +1178,14 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
               sliver: SliverList.builder(
                 itemCount: communities.length,
+                findChildIndexCallback: (Key key) {
+                  if (key is ValueKey<String>) {
+                    final id = key.value;
+                    final idx = communities.indexWhere((c) => 'comm_${c.id}' == id);
+                    return idx != -1 ? idx : null;
+                  }
+                  return null;
+                },
                 itemBuilder: (context, index) {
                   final comm = communities[index];
                   final channels = comm.channels.isNotEmpty
@@ -1264,6 +1196,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                       : null;
 
                   return Padding(
+                    key: ValueKey('comm_${comm.id}'),
                     padding: EdgeInsets.only(bottom: isCompact ? 10 : 14),
                     child: Card(
                       clipBehavior: Clip.antiAlias,
@@ -1351,7 +1284,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
-                                              '${comm.participantIds.length} membros na malha',
+                                              '${comm.participantIds.length} participantes',
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 color: colors.onSurfaceVariant,

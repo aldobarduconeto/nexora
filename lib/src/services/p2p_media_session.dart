@@ -152,6 +152,7 @@ class P2PMediaSession {
     'echoCancellation': true,
     'noiseSuppression': true,
     'autoGainControl': true,
+    'highpassFilter': true,
   };
 
   P2PCallState _state = P2PCallState.idle;
@@ -251,6 +252,10 @@ class P2PMediaSession {
 
       if (line.startsWith('m=audio')) {
         inVideo = false;
+        result.add(line);
+        result.add('b=AS:128');
+        result.add('b=TIAS:128000');
+        continue;
       } else if (line.startsWith('m=video')) {
         inVideo = true;
         result.add(line);

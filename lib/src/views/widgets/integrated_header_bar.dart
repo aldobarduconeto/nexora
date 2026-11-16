@@ -1,9 +1,9 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexora/src/services/conversation_tabs_service.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/notification_service.dart';
+import 'package:nexora/src/services/settings_services.dart';
 import 'package:nexora/src/services/window_service.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
 
@@ -14,23 +14,30 @@ class IntegratedHeaderBar extends StatefulWidget implements PreferredSizeWidget 
     this.onNewConversation,
     this.onSearchPressed,
     this.onNotificationsPressed,
+    this.onToggleTheme,
+    this.onOpenSettings,
+    this.onOpenVault,
   });
 
   final bool minimal;
   final VoidCallback? onNewConversation;
   final VoidCallback? onSearchPressed;
   final VoidCallback? onNotificationsPressed;
+  final VoidCallback? onToggleTheme;
+  final VoidCallback? onOpenSettings;
+  final VoidCallback? onOpenVault;
 
   @override
   State<IntegratedHeaderBar> createState() => _IntegratedHeaderBarState();
 
   @override
-  Size get preferredSize => const Size.fromHeight(46);
+  Size get preferredSize => const Size.fromHeight(42);
 }
 
 class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
   final _tabsService = ConversationTabsService.instance;
   final _windowService = WindowService.instance;
+  final _settingsService = SettingsService.instance;
   final _localData = LocalDataService.instance;
   final ScrollController _tabsScrollController = ScrollController();
 
@@ -38,12 +45,14 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
   void initState() {
     super.initState();
     _tabsService.addListener(_refresh);
+    _settingsService.addListener(_refresh);
     _localData.addListener(_refresh);
   }
 
   @override
   void dispose() {
     _tabsService.removeListener(_refresh);
+    _settingsService.removeListener(_refresh);
     _localData.removeListener(_refresh);
     _tabsScrollController.dispose();
     super.dispose();
@@ -53,21 +62,11 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _copyMyKey() async {
-    final key = _localData.currentUser.publicKey;
-    if (key.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: key));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sua chave pública foi copiada.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+  void _showTabContextMenu(BuildContext context, TapDownDetails details, ConversationTab tab) {
+    _showTabContextMenuAt(context, details.globalPosition, tab);
   }
 
-  void _showTabContextMenu(BuildContext context, TapDownDetails details, ConversationTab tab) {
+  void _showTabContextMenuAt(BuildContext context, Offset globalPosition, ConversationTab tab) {
     if (tab.isHome) return;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlay == null) return;
@@ -75,9 +74,10 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
-        details.globalPosition & const Size(40, 40),
+        globalPosition & const Size(40, 40),
         Offset.zero & overlay.size,
       ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       items: [
         PopupMenuItem(
           value: 'close',
@@ -109,292 +109,591 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     });
   }
 
+  void _showNetworkStatusDialog(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final user = _localData.currentUser;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isStealth = _settingsService.settings.stealthMode;
+          return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+            contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00DC82).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.shield_outlined, color: Color(0xFF00DC82), size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rede P2P & Segurança',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        'Conexão direta e descentralizada',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        _infoMetricRow(
+                          icon: Icons.lock_outline_rounded,
+                          label: 'Criptografia',
+                          value: 'Ed25519 • AES-256-GCM',
+                          color: colors.primary,
+                        ),
+                        const SizedBox(height: 8),
+                        _infoMetricRow(
+                          icon: Icons.swap_calls_rounded,
+                          label: 'Áudio & Vídeo',
+                          value: 'DTLS-SRTP 4K@60fps',
+                          color: const Color(0xFF00DC82),
+                        ),
+                        const SizedBox(height: 8),
+                        _infoMetricRow(
+                          icon: Icons.hub_outlined,
+                          label: 'Topologia',
+                          value: 'P2P Direto (Sem Servidor Central)',
+                          color: Colors.blueAccent,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    dense: true,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.3)),
+                    ),
+                    secondary: Icon(
+                      isStealth ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      color: isStealth ? colors.primary : colors.onSurfaceVariant,
+                      size: 20,
+                    ),
+                    title: const Text('Modo Furtivo (Anti-Ombro)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Oculta mensagens sensíveis com desfoque temporário', style: TextStyle(fontSize: 11)),
+                    value: isStealth,
+                    onChanged: (val) async {
+                      await _settingsService.updateSetting((st) => st.copyWith(stealthMode: val));
+                      setDialogState(() {});
+                    },
+                  ),
+                  if (user.publicKey.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.copy_rounded, size: 16),
+                      label: const Text('Copiar meu código de contato P2P', style: TextStyle(fontSize: 12)),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: user.publicKey));
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Código de contato copiado para a área de transferência.'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _infoMetricRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: color),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDesktop = _windowService.isDesktop;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeCallTab = _tabsService.getTabWithActiveCall();
     final isCallInBackground = activeCallTab != null && activeCallTab.id != _tabsService.activeTab.id;
+    final currentUser = _localData.currentUser;
 
     final topPadding = MediaQuery.paddingOf(context).top;
-    final totalHeight = widget.preferredSize.height + (isDesktop ? 0.0 : topPadding);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = !isDesktop && screenWidth < 600;
+    final hasSubBar = isMobile && !widget.minimal;
+    final barHeight = 42.0 + (hasSubBar ? 38.0 : 0.0);
+    final totalHeight = barHeight + (isDesktop ? 0.0 : topPadding);
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onPanStart: isDesktop ? (_) => _windowService.startDragging() : null,
       onDoubleTap: isDesktop ? () => _windowService.toggleMaximize() : null,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            height: totalHeight,
-            padding: EdgeInsets.only(top: isDesktop ? 0.0 : topPadding),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest.withValues(alpha: 0.28),
-              border: Border(
-                bottom: BorderSide(
-                  color: colors.outlineVariant.withValues(alpha: 0.5),
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Row(
-          children: [
-            // Left: App Brand & E2EE Status Pill
-            Padding(
-              padding: const EdgeInsets.only(left: 12, right: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+      child: Container(
+        height: totalHeight,
+        padding: EdgeInsets.only(top: isDesktop ? 0.0 : topPadding),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border(
+            bottom: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.35)),
+          ),
+        ),
+        child: hasSubBar
+            ? Column(
                 children: [
-                  const BrandMark(size: 24),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Nexora',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      fontSize: 14.5,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // E2EE Indicator Dot
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: colors.primary.withValues(alpha: 0.25),
-                      ),
-                    ),
+                  // Tier 1: Main Header Row (Mobile)
+                  SizedBox(
+                    height: 42,
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: colors.primary,
-                            boxShadow: [
-                              BoxShadow(
-                                color: colors.primary.withValues(alpha: 0.6),
-                                blurRadius: 4,
+                        // Left: Brand & P2P Status Pill
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12, right: 6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const BrandMark(size: 22),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Nexora',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _NetworkStatusPill(
+                                onTap: () => _showNetworkStatusDialog(context),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        Text(
-                          'E2EE',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.4,
-                            color: colors.primary,
-                          ),
+                        const Spacer(),
+
+                        // Right actions on mobile
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isCallInBackground)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: Material(
+                                  color: const Color(0xFF00DC82).withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () => _tabsService.selectTabById(activeCallTab.id),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: const Color(0xFF00DC82).withValues(alpha: 0.4),
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.phone_in_talk_rounded,
+                                        size: 13,
+                                        color: Color(0xFF00DC82),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                            // Search icon button on mobile
+                            if (widget.onSearchPressed != null)
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Buscar',
+                                icon: const Icon(Icons.search_rounded, size: 19),
+                                onPressed: widget.onSearchPressed,
+                              ),
+
+                            // Theme toggle button
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+                              icon: Icon(
+                                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                                size: 17,
+                              ),
+                              onPressed: widget.onToggleTheme ??
+                                  () => _settingsService.updateSetting(
+                                        (s) => s.copyWith(isDarkMode: !s.isDarkMode),
+                                      ),
+                            ),
+
+                            // Notifications Bell
+                            ListenableBuilder(
+                              listenable: NotificationService.instance,
+                              builder: (context, _) {
+                                final count = NotificationService.instance.history.length;
+                                return IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Notificações',
+                                  onPressed: widget.onNotificationsPressed,
+                                  icon: Badge(
+                                    isLabelVisible: count > 0,
+                                    smallSize: 7,
+                                    child: const Icon(Icons.notifications_none_rounded, size: 18),
+                                  ),
+                                );
+                              },
+                            ),
+
+                            // User Profile Capsule
+                            if (currentUser.publicKey.isNotEmpty) ...[
+                              const SizedBox(width: 2),
+                              _UserProfileCapsule(
+                                nickname: currentUser.nickname,
+                                publicKey: currentUser.publicKey,
+                                onOpenVault: widget.onOpenVault ?? () {},
+                                onOpenSettings: widget.onOpenSettings ?? () {},
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
 
-            if (!widget.minimal) ...[
-              const SizedBox(width: 4),
-              Container(
-                height: 20,
-                width: 1,
-                color: colors.outlineVariant.withValues(alpha: 0.4),
-              ),
-              const SizedBox(width: 6),
-
-              // Middle: Multi-Conversation Tabs
-              Expanded(
-                child: Scrollbar(
-                  controller: _tabsScrollController,
-                  child: SingleChildScrollView(
-                    controller: _tabsScrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (int i = 0; i < _tabsService.tabs.length; i++)
-                          _buildTabItem(context, _tabsService.tabs[i], i),
-
-                        // "+" Button to add/open new conversation
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Material(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(8),
-                              onTap: widget.onNewConversation,
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(
-                                  Icons.add_rounded,
-                                  size: 18,
-                                  color: colors.onSurfaceVariant,
+                  // Tier 2: Sub-Bar (Mobile Tabs Strip or Search Capsule)
+                  SizedBox(
+                    height: 38,
+                    child: _tabsService.tabs.length > 1
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
+                            child: Scrollbar(
+                              controller: _tabsScrollController,
+                              child: SingleChildScrollView(
+                                controller: _tabsScrollController,
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (int i = 0; i < _tabsService.tabs.length; i++)
+                                      _buildTabItem(context, _tabsService.tabs[i], i),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: widget.onNewConversation,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(5),
+                                            child: Icon(
+                                              Icons.add_rounded,
+                                              size: 16,
+                                              color: colors.onSurfaceVariant.withValues(alpha: 0.8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                            ),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+                            child: _MobileSearchCapsule(
+                              onTap: widget.onSearchPressed ?? () {},
+                            ),
+                          ),
+                  ),
+                ],
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 780;
+
+                  return Row(
+                    children: [
+                      // Left: App Brand & P2P Status Pill
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12, right: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const BrandMark(size: 22),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Nexora',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                fontSize: 14,
+                              ),
+                            ),
+                            if (!widget.minimal) ...[
+                              const SizedBox(width: 8),
+                              _NetworkStatusPill(
+                                onTap: () => _showNetworkStatusDialog(context),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      if (!widget.minimal) ...[
+                        const SizedBox(width: 6),
+
+                        // Middle: Multi-Conversation Tabs
+                        Expanded(
+                          child: Scrollbar(
+                            controller: _tabsScrollController,
+                            child: SingleChildScrollView(
+                              controller: _tabsScrollController,
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (int i = 0; i < _tabsService.tabs.length; i++)
+                                    _buildTabItem(context, _tabsService.tabs[i], i),
+
+                                  // "+" Button to add/open new conversation
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(6),
+                                        onTap: widget.onNewConversation,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(5),
+                                          child: Icon(
+                                            Icons.add_rounded,
+                                            size: 16,
+                                            color: colors.onSurfaceVariant.withValues(alpha: 0.8),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
+
+                        // Search Capsule (visible on wider screens)
+                        if (isWide && widget.onSearchPressed != null) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: _SearchBarCapsule(onTap: widget.onSearchPressed!),
+                          ),
+                        ],
+                      ] else ...[
+                        const Spacer(),
                       ],
-                    ),
-                  ),
-                ),
+
+                      // Right side: Active call banner, Quick Actions, and Window Controls
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (!widget.minimal) ...[
+                            // Return to Active Call Pill (if calling in another tab)
+                            if (isCallInBackground)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Material(
+                                  color: const Color(0xFF00DC82).withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () => _tabsService.selectTabById(activeCallTab.id),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: const Color(0xFF00DC82).withValues(alpha: 0.4),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(
+                                            Icons.phone_in_talk_rounded,
+                                            size: 13,
+                                            color: Color(0xFF00DC82),
+                                          ),
+                                          SizedBox(width: 5),
+                                          Text(
+                                            'Chamada ativa',
+                                            style: TextStyle(
+                                              color: Color(0xFF00DC82),
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                            // Compact Search Button (when search capsule is hidden)
+                            if (!isWide && widget.onSearchPressed != null)
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: 'Buscar (Ctrl+K)',
+                                icon: const Icon(Icons.search_rounded, size: 18),
+                                onPressed: widget.onSearchPressed,
+                              ),
+
+                            // Quick Theme Toggle (Sol / Lua)
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+                              icon: Icon(
+                                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                                size: 17,
+                              ),
+                              onPressed: widget.onToggleTheme ??
+                                  () => _settingsService.updateSetting(
+                                        (s) => s.copyWith(isDarkMode: !s.isDarkMode),
+                                      ),
+                            ),
+
+                            // Notifications Bell
+                            ListenableBuilder(
+                              listenable: NotificationService.instance,
+                              builder: (context, _) {
+                                final count = NotificationService.instance.history.length;
+                                return IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Notificações',
+                                  onPressed: widget.onNotificationsPressed,
+                                  icon: Badge(
+                                    isLabelVisible: count > 0,
+                                    smallSize: 7,
+                                    child: const Icon(Icons.notifications_none_rounded, size: 18),
+                                  ),
+                                );
+                              },
+                            ),
+
+                            // User Profile Capsule Menu
+                            if (currentUser.publicKey.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              _UserProfileCapsule(
+                                nickname: currentUser.nickname,
+                                publicKey: currentUser.publicKey,
+                                onOpenVault: widget.onOpenVault ?? () {},
+                                onOpenSettings: widget.onOpenSettings ?? () {},
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                          ] else ...[
+                            // Quick Theme Toggle for Minimal Header (Sign-in / onboarding)
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+                              icon: Icon(
+                                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                                size: 17,
+                              ),
+                              onPressed: widget.onToggleTheme ??
+                                  () => _settingsService.updateSetting(
+                                        (s) => s.copyWith(isDarkMode: !s.isDarkMode),
+                                      ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+
+                          // Desktop Window Action Buttons (Minimize, Maximize, Close)
+                          if (isDesktop) ...[
+                            _WindowButton(
+                              icon: Icons.remove_rounded,
+                              tooltip: 'Minimizar',
+                              onPressed: _windowService.minimize,
+                            ),
+                            _WindowButton(
+                              icon: Icons.crop_square_rounded,
+                              tooltip: 'Maximizar / Restaurar',
+                              onPressed: _windowService.toggleMaximize,
+                            ),
+                            _WindowButton(
+                              icon: Icons.close_rounded,
+                              tooltip: 'Fechar',
+                              isClose: true,
+                              onPressed: _windowService.close,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
-            ] else ...[
-              const Spacer(),
-            ],
-
-            // Right side: Active call banner, Quick Actions, Key, and Window Controls
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!widget.minimal) ...[
-                  // Return to Active Call Pill (if calling in another tab)
-                  if (isCallInBackground)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Material(
-                        color: const Color(0xFF00DC82).withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(999),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: () => _tabsService.selectTabById(activeCallTab.id),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: const Color(0xFF00DC82).withValues(alpha: 0.4),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Icon(
-                                  Icons.phone_in_talk_rounded,
-                                  size: 14,
-                                  color: Color(0xFF00DC82),
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Chamada em andamento',
-                                  style: TextStyle(
-                                    color: Color(0xFF00DC82),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // Search Action
-                  if (widget.onSearchPressed != null)
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Buscar conversas e mensagens',
-                      icon: const Icon(Icons.search_rounded, size: 18),
-                      onPressed: widget.onSearchPressed,
-                    ),
-
-                  // Notifications Bell
-                  ListenableBuilder(
-                    listenable: NotificationService.instance,
-                    builder: (context, _) {
-                      final count = NotificationService.instance.history.length;
-                      return IconButton(
-                        visualDensity: VisualDensity.compact,
-                        tooltip: 'Central de Notificações',
-                        onPressed: widget.onNotificationsPressed,
-                        icon: Badge(
-                          isLabelVisible: count > 0,
-                          smallSize: 8,
-                          child: const Icon(Icons.notifications_outlined, size: 18),
-                        ),
-                      );
-                    },
-                  ),
-
-                  // Copy User Key Pill
-                  if (_localData.currentUser.publicKey.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Material(
-                        color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(999),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: _copyMyKey,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: colors.outlineVariant.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.key_rounded, size: 12, color: colors.primary),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _localData.currentUser.publicKey.length > 8
-                                      ? '${_localData.currentUser.publicKey.substring(0, 4)}..${_localData.currentUser.publicKey.substring(_localData.currentUser.publicKey.length - 3)}'
-                                      : 'Chave',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.w600,
-                                    color: colors.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-
-                // Desktop Window Action Buttons (Minimize, Maximize, Close)
-                if (isDesktop) ...[
-                  const SizedBox(width: 6),
-                  _WindowButton(
-                    icon: Icons.remove_rounded,
-                    tooltip: 'Minimizar',
-                    onPressed: _windowService.minimize,
-                  ),
-                  _WindowButton(
-                    icon: Icons.crop_square_rounded,
-                    tooltip: 'Maximizar / Restaurar',
-                    onPressed: _windowService.toggleMaximize,
-                  ),
-                  _WindowButton(
-                    icon: Icons.close_rounded,
-                    tooltip: 'Fechar',
-                    isClose: true,
-                    onPressed: _windowService.close,
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-          ),
-        ),
       ),
     );
   }
@@ -417,35 +716,27 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       child: GestureDetector(
-        onSecondaryTapDown: (details) => _showTabContextMenu(context, details, tab),
+        onSecondaryTapDown: (details) => _showTabContextMenuAt(context, details.globalPosition, tab),
+        onLongPressStart: (details) => _showTabContextMenuAt(context, details.globalPosition, tab),
         child: Material(
           color: isSelected
-              ? colors.primary.withValues(alpha: 0.16)
+              ? colors.surfaceContainerHighest.withValues(alpha: 0.65)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           child: InkWell(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
             onTap: () => _tabsService.selectTabByIndex(index),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isSelected
-                      ? colors.primary.withValues(alpha: 0.4)
-                      : Colors.transparent,
-                  width: 1,
-                ),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     iconData,
-                    size: 14,
-                    color: isSelected ? colors.primary : colors.onSurfaceVariant,
+                    size: 13,
+                    color: isSelected ? colors.primary : colors.onSurfaceVariant.withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 6),
                   ConstrainedBox(
@@ -455,8 +746,8 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 11.5,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                         color: isSelected ? colors.onSurface : colors.onSurfaceVariant,
                       ),
                     ),
@@ -464,10 +755,10 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
 
                   // Call in progress indicator on tab
                   if (tab.hasActiveCall) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 5),
                     Container(
-                      width: 6,
-                      height: 6,
+                      width: 5,
+                      height: 5,
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: Color(0xFF00DC82),
@@ -477,9 +768,9 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
 
                   // Unread counter on tab
                   if (tab.unreadCount > 0) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 5),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                       decoration: BoxDecoration(
                         color: colors.primary,
                         borderRadius: BorderRadius.circular(999),
@@ -487,8 +778,8 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
                       child: Text(
                         '${tab.unreadCount}',
                         style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
                           color: colors.onPrimary,
                         ),
                       ),
@@ -497,18 +788,16 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
 
                   // Close tab button (except for home tab)
                   if (!tab.isHome) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     InkWell(
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(4),
                       onTap: () => _tabsService.closeTab(tab.id),
                       child: Padding(
                         padding: const EdgeInsets.all(2),
                         child: Icon(
                           Icons.close_rounded,
-                          size: 13,
-                          color: isSelected
-                              ? colors.onSurfaceVariant
-                              : colors.onSurfaceVariant.withValues(alpha: 0.6),
+                          size: 12,
+                          color: colors.onSurfaceVariant.withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -546,14 +835,14 @@ class _WindowButtonState extends State<_WindowButton> {
   @override
   Widget build(BuildContext context) {
     Color bg = Colors.transparent;
-    Color fg = Theme.of(context).colorScheme.onSurfaceVariant;
+    Color fg = Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8);
 
     if (_hovered) {
       if (widget.isClose) {
         bg = const Color(0xFFE81123);
         fg = Colors.white;
       } else {
-        bg = Theme.of(context).colorScheme.surfaceContainerHighest;
+        bg = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
         fg = Theme.of(context).colorScheme.onSurface;
       }
     }
@@ -567,11 +856,331 @@ class _WindowButtonState extends State<_WindowButton> {
         child: GestureDetector(
           onTap: widget.onPressed,
           child: Container(
-            width: 40,
-            height: 32,
+            width: 44,
+            height: double.infinity,
             alignment: Alignment.center,
             color: bg,
-            child: Icon(widget.icon, size: 14, color: fg),
+            child: Icon(widget.icon, size: 13, color: fg),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchBarCapsule extends StatefulWidget {
+  const _SearchBarCapsule({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  State<_SearchBarCapsule> createState() => _SearchBarCapsuleState();
+}
+
+class _SearchBarCapsuleState extends State<_SearchBarCapsule> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          height: 27,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? colors.surfaceContainerHighest.withValues(alpha: 0.8)
+                : colors.surfaceContainerHighest.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _hovered
+                  ? colors.primary.withValues(alpha: 0.45)
+                  : colors.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 13.5,
+                color: _hovered ? colors.primary : colors.onSurfaceVariant.withValues(alpha: 0.8),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'Buscar ou comandos...',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: colors.outlineVariant.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(
+                  'Ctrl K',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSurfaceVariant.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NetworkStatusPill extends StatelessWidget {
+  const _NetworkStatusPill({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Rede P2P & Segurança • Clique para detalhes',
+      waitDuration: const Duration(milliseconds: 500),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00DC82).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFF00DC82).withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5.5,
+                  height: 5.5,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF00DC82),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                const Text(
+                  'P2P',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF00DC82),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserProfileCapsule extends StatelessWidget {
+  const _UserProfileCapsule({
+    required this.nickname,
+    required this.publicKey,
+    required this.onOpenVault,
+    required this.onOpenSettings,
+  });
+
+  final String nickname;
+  final String publicKey;
+  final VoidCallback onOpenVault;
+  final VoidCallback onOpenSettings;
+
+  void _showMenu(BuildContext context, TapDownDetails details) {
+    final colors = Theme.of(context).colorScheme;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    final shortKey = publicKey.length > 10
+        ? '${publicKey.substring(0, 5)}...${publicKey.substring(publicKey.length - 4)}'
+        : publicKey;
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        details.globalPosition & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                nickname.isNotEmpty ? nickname : 'Meu Perfil',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  color: colors.onSurface,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'ID: $shortKey',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontFamily: 'monospace',
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Divider(height: 1),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'copy_key',
+          child: Row(
+            children: const [
+              Icon(Icons.copy_rounded, size: 16),
+              SizedBox(width: 10),
+              Text('Copiar código de contato'),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'vault',
+          child: Row(
+            children: const [
+              Icon(Icons.bookmark_rounded, size: 16),
+              SizedBox(width: 10),
+              Text('Mensagens Salvas'),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'settings',
+          child: Row(
+            children: const [
+              Icon(Icons.settings_outlined, size: 16),
+              SizedBox(width: 10),
+              Text('Configurações'),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) async {
+      if (value == 'copy_key' && publicKey.isNotEmpty) {
+        await Clipboard.setData(ClipboardData(text: publicKey));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Código de contato copiado para a área de transferência.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else if (value == 'vault') {
+        onOpenVault();
+      } else if (value == 'settings') {
+        onOpenSettings();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final initial = nickname.isNotEmpty ? nickname[0].toUpperCase() : 'N';
+    return GestureDetector(
+      onTapDown: (details) => _showMenu(context, details),
+      child: Tooltip(
+        message: nickname.isNotEmpty ? '$nickname (Meu Perfil)' : 'Meu Perfil',
+        child: Container(
+          width: 25,
+          height: 25,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: colors.primary.withValues(alpha: 0.4),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            initial,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: colors.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileSearchCapsule extends StatelessWidget {
+  const _MobileSearchCapsule({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onTap,
+        child: Container(
+          height: 31,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: colors.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 15,
+                color: colors.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Buscar conversas, canais ou comandos...',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w400,
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
           ),
         ),
       ),
