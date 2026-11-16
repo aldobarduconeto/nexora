@@ -34,6 +34,9 @@ class Message {
   final DateTime? viewedAt; // Momento da visualização
   final int? ephemeralSeconds; // Duração efêmera em segundos
 
+  /// Alias de compatibilidade para `textMsg`
+  String get content => textMsg;
+
   Message({
     required this.messageId,
     this.historyId,

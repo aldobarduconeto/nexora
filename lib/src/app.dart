@@ -313,7 +313,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                   final matchingConversations = _user.conversations.where((c) {
                     if (queryLower.isEmpty) return true;
                     final name = _user.conversationName(c).toLowerCase();
-                    final lastMsg = c.messages.isNotEmpty ? c.messages.last.content.toLowerCase() : '';
+                    final lastMsg = c.messages.isNotEmpty ? c.messages.last.textMsg.toLowerCase() : '';
                     return name.contains(queryLower) || lastMsg.contains(queryLower);
                   }).take(queryLower.isEmpty ? 5 : 20).toList();
 
@@ -510,7 +510,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                                   ),
                                   subtitle: Text(
                                     conv.messages.isNotEmpty
-                                        ? conv.messages.last.content
+                                        ? conv.messages.last.textMsg
                                         : (conv.isSavedMessages ? 'Cofre Pessoal Criptografado' : 'Sem mensagens ainda'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
