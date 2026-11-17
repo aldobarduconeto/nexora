@@ -17,6 +17,7 @@ abstract final class AppTheme {
     bool animations, {
     bool isAmoled = false,
     double cardRadius = 18.0,
+    bool reduceMotion = false,
   }) {
     final dark = brightness == Brightness.dark;
     final base = ColorScheme.fromSeed(
@@ -196,8 +197,48 @@ abstract final class AppTheme {
           fontSize: 12.5,
         ),
       ),
-      pageTransitionsTheme: animations
-          ? const PageTransitionsTheme()
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 500),
+        showDuration: const Duration(milliseconds: 2500),
+        triggerMode: TooltipTriggerMode.longPress,
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF1F293D) : const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: outlineVariant.withValues(alpha: 0.35),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        textStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: scheme.primary,
+        inactiveTrackColor: scheme.primary.withValues(alpha: 0.24),
+        thumbColor: scheme.primary,
+        overlayColor: scheme.primary.withValues(alpha: 0.14),
+        trackHeight: 3.5,
+      ),
+      pageTransitionsTheme: (animations && !reduceMotion)
+          ? const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+                TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+                TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+                TargetPlatform.macOS: ZoomPageTransitionsBuilder(),
+                TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+              },
+            )
           : PageTransitionsTheme(
               builders: {
                 for (final platform in TargetPlatform.values)

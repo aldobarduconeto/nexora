@@ -604,6 +604,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
         s.animationsEnabled,
         isAmoled: s.isAmoledMode,
         cardRadius: s.cardRadius,
+        reduceMotion: !s.animationsEnabled,
       ),
       themeAnimationDuration: s.animationsEnabled
           ? const Duration(milliseconds: 180)

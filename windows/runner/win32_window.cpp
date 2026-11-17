@@ -187,6 +187,17 @@ Win32Window::MessageHandler(HWND hwnd,
   switch (message) {
     case WM_NCCALCSIZE: {
       if (wparam == TRUE) {
+        if (IsZoomed(hwnd)) {
+          HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+          if (monitor) {
+            MONITORINFO monitor_info{};
+            monitor_info.cbSize = sizeof(MONITORINFO);
+            if (GetMonitorInfo(monitor, &monitor_info)) {
+              NCCALCSIZE_PARAMS* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lparam);
+              params->rgrc[0] = monitor_info.rcWork;
+            }
+          }
+        }
         // By returning 0, the OS titlebar/caption is removed and Flutter fills the entire window
         return 0;
       }
@@ -194,6 +205,9 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_NCHITTEST: {
+      if (IsZoomed(hwnd)) {
+        return HTCLIENT;
+      }
       // Keep resizable edges active on window borders (6 pixels margin)
       POINT pt = {LOWORD(lparam), HIWORD(lparam)};
       ScreenToClient(hwnd, &pt);

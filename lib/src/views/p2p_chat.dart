@@ -13,6 +13,7 @@ import 'package:nexora/src/services/group_invitation_service.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/message_service.dart';
 import 'package:nexora/src/services/p2p_connection_service.dart';
+import 'package:nexora/src/services/permission_service.dart';
 import 'package:nexora/src/services/scheduled_message_service.dart';
 import 'package:nexora/src/services/settings_services.dart';
 import 'package:nexora/src/utils/qr_code.dart';
@@ -567,6 +568,16 @@ class _P2PChatPageState extends State<P2PChatPage> {
   Future<void> _startCall({required bool video}) async {
     if (!_connection.canStartCall || _busy || _isBlocked) return;
     try {
+      final perm = PermissionService.instance.state;
+      if (!perm.microphone || (video && !perm.camera)) {
+        final updated = await PermissionService.instance.requestPermissions();
+        if (!updated.microphone || (video && !updated.camera)) {
+          if (mounted) {
+            _showError('Permissões de microfone e câmera são necessárias para chamadas.');
+          }
+          return;
+        }
+      }
       VideoStreamPreset? preset;
       if (video) {
         preset = await pickVideoStreamPreset(
@@ -1259,6 +1270,13 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
   Future<void> _sendVoiceMemo() async {
     if (_sending || _busy) return;
+    if (!PermissionService.instance.state.microphone) {
+      final updated = await PermissionService.instance.requestPermissions();
+      if (!updated.microphone) {
+        if (mounted) _showError('Permissão de microfone necessária para enviar áudios.');
+        return;
+      }
+    }
     setState(() => _sending = true);
 
     try {

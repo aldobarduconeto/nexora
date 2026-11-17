@@ -222,7 +222,7 @@ class PermissionService extends ChangeNotifier {
           notifyListeners();
         }
 
-        if (stored == null || !stored.requestedOnFirstLaunch) {
+        if (stored == null || !stored.requestedOnFirstLaunch || !_state.allGranted) {
           final granted =
               await _invokeNative('request') ??
               await _requestFallbackMediaPermissions();

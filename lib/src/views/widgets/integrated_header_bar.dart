@@ -948,8 +948,9 @@ class _MinimizePainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
-    // Align line horizontally at the baseline (matching bottom of maximize square)
-    canvas.drawLine(Offset(0, size.height - 0.5), Offset(size.width, size.height - 0.5), paint);
+    // Align line horizontally at the vertical center (matching center of maximize and close icons)
+    final y = size.height / 2;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }
 
   @override

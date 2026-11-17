@@ -89,9 +89,13 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     final currentDuration = (_progress * totalDuration).round();
     final primaryColor = widget.isLocal ? colors.onPrimaryContainer : colors.primary;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    return Semantics(
+      label: 'Mensagem de voz, ${_isPlaying ? 'reproduzindo' : 'pausada'}, duração ${_formatDuration(totalDuration)}',
+      value: '${(_progress * 100).toInt()}%',
+      slider: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Botão Play/Pause
@@ -175,6 +179,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
           ),
         ],
       ),
+    ),
     );
   }
 }

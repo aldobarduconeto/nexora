@@ -25,6 +25,11 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
   void initState() {
     super.initState();
     _permissions.addListener(_onPermissionsChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_permissions.state.allGranted) {
+        _requestPermissions();
+      }
+    });
   }
 
   @override
@@ -55,6 +60,9 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
   }
 
   Future<void> _completeOnboarding() async {
+    if (!_permissions.state.allGranted && !_hasRequested) {
+      await _requestPermissions();
+    }
     await _settings.updateSetting(
       (s) => s.copyWith(hasCompletedWelcome: true),
     );

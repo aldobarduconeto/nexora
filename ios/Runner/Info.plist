@@ -70,5 +70,7 @@
 	<string>O Nexora utiliza a câmera apenas durante videochamadas P2P diretas iniciadas ou aceitas por você.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>O Nexora utiliza o microfone apenas durante chamadas de voz e vídeo P2P diretas iniciadas ou aceitas por você.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>O Nexora precisa de acesso à biblioteca de fotos para compartilhamento de imagens e vídeos em conversas P2P.</string>
 </dict>
 </plist>
