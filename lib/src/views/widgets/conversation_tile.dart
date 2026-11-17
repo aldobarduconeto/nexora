@@ -355,6 +355,7 @@ class ConversationTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

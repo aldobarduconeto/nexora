@@ -1200,6 +1200,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                     key: ValueKey('comm_${comm.id}'),
                     padding: EdgeInsets.only(bottom: isCompact ? 10 : 14),
                     child: FrostedCard(
+                      padding: EdgeInsets.zero,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6),

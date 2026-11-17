@@ -277,40 +277,58 @@ class FrostedCard extends StatelessWidget {
   const FrostedCard({
     super.key,
     required this.child,
-    this.borderRadius = 18.0,
+    this.borderRadius,
     this.padding = const EdgeInsets.all(20),
     this.borderWidth = 1.0,
     this.borderColor,
+    this.border,
     this.backgroundColor,
     this.onTap,
   });
 
   final Widget child;
-  final double borderRadius;
+  final dynamic borderRadius;
   final EdgeInsetsGeometry padding;
   final double borderWidth;
   final Color? borderColor;
+  final BoxBorder? border;
   final Color? backgroundColor;
   final VoidCallback? onTap;
+
+  BorderRadius _resolveRadius() {
+    if (borderRadius is BorderRadius) {
+      return borderRadius as BorderRadius;
+    }
+    if (borderRadius is num) {
+      return BorderRadius.circular((borderRadius as num).toDouble());
+    }
+    return BorderRadius.circular(18.0);
+  }
+
+  BoxBorder _resolveBorder(ColorScheme colors) {
+    if (border != null) return border!;
+    final color = borderColor ?? colors.outlineVariant.withValues(alpha: 0.45);
+    return Border.all(color: color, width: borderWidth);
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = _resolveRadius();
+    final effectiveBorder = _resolveBorder(colors);
 
     final bg = backgroundColor ??
         (isDark
             ? colors.surface.withValues(alpha: 0.65)
             : colors.surface.withValues(alpha: 0.85));
 
-    final border = borderColor ?? colors.outlineVariant.withValues(alpha: 0.45);
-
     Widget content = Container(
       padding: padding,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: border, width: borderWidth),
+        borderRadius: radius,
+        border: effectiveBorder,
       ),
       child: child,
     );
@@ -318,9 +336,9 @@ class FrostedCard extends StatelessWidget {
     if (onTap != null) {
       content = Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(borderRadius),
+        borderRadius: radius,
         child: InkWell(
-          borderRadius: BorderRadius.circular(borderRadius),
+          borderRadius: radius,
           onTap: onTap,
           child: content,
         ),
@@ -328,7 +346,7 @@ class FrostedCard extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
+      borderRadius: radius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: content,
