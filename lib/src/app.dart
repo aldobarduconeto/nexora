@@ -155,7 +155,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.notifications_none_rounded, size: 52, color: colors.onSurfaceVariant.withOpacity(0.5)),
+                              Icon(Icons.notifications_none_rounded, size: 52, color: colors.onSurfaceVariant.withValues(alpha: 0.5)),
                               const SizedBox(height: 12),
                               Text(
                                 'Nenhuma notificação recente',
@@ -174,7 +174,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                               leading: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: colors.primary.withOpacity(0.12),
+                                  color: colors.primary.withValues(alpha: 0.12),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(Icons.notifications_outlined, color: colors.primary, size: 20),

@@ -848,7 +848,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.3),
+                        color: Colors.grey.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -859,7 +859,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: colors.primary.withOpacity(0.12),
+                          color: colors.primary.withValues(alpha: 0.12),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(Icons.schedule_send_rounded, color: colors.primary, size: 22),
@@ -877,9 +877,9 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest.withOpacity(0.4),
+                      color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: colors.outlineVariant.withOpacity(0.4)),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,9 +999,9 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: colors.primary.withOpacity(0.09),
+                      color: colors.primary.withValues(alpha: 0.09),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: colors.primary.withOpacity(0.3)),
+                      border: Border.all(color: colors.primary.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
@@ -1124,7 +1124,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.3),
+                        color: Colors.grey.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1760,7 +1760,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       width: 44,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.35),
+                        color: Colors.grey.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1802,7 +1802,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest.withOpacity(0.4),
+                        color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1841,7 +1841,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant.withOpacity(0.4)),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -1919,7 +1919,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant.withOpacity(0.4)),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -1940,7 +1940,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.2),
+                                    color: Colors.amber.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text('Criador', style: TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.bold)),
@@ -1949,10 +1949,10 @@ class _P2PChatPageState extends State<P2PChatPage> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: Colors.teal.withOpacity(0.2),
+                                    color: const Color(0xFF00DC82).withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text('Admin', style: TextStyle(fontSize: 10, color: Colors.tealAccent, fontWeight: FontWeight.bold)),
+                                  child: const Text('Admin', style: TextStyle(fontSize: 10, color: Color(0xFF00DC82), fontWeight: FontWeight.bold)),
                                 ),
                             ],
                           ),
@@ -2851,6 +2851,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
         return null;
       },
       itemBuilder: (context, index) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final message = visible[index];
         final local = message.senderId == _user.currentUser.id;
         final time = message.sentAt.toLocal();
@@ -2922,13 +2923,27 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   margin: EdgeInsets.only(bottom: isCompact ? 6 : 10),
                   padding: EdgeInsets.fromLTRB(15, isCompact ? 8 : 11, 15, isCompact ? 7 : 9),
                   decoration: BoxDecoration(
-                    color: local ? colors.primaryContainer : colors.surface,
+                    color: local
+                        ? (isDark
+                            ? colors.primary.withValues(alpha: 0.22)
+                            : colors.primary.withValues(alpha: 0.12))
+                        : (isDark
+                            ? colors.surface.withValues(alpha: 0.8)
+                            : colors.surface),
                     border: Border.all(
                       color: local
-                          ? colors.primary.withValues(alpha: .28)
-                          : colors.outlineVariant,
+                          ? colors.primary.withValues(alpha: isDark ? 0.38 : 0.28)
+                          : colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
+                      width: 1.1,
                     ),
                     borderRadius: bubbleBorderRadius,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.03),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1.5),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3075,15 +3090,16 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
   Widget _buildComposer() {
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final canSend = (widget.conversation.isSavedMessages || _connection.canSend) &&
         !_busy &&
         !_isBlocked;
 
     return Container(
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: isDark ? colors.surface.withValues(alpha: 0.85) : colors.surface,
         border: Border(
-          top: BorderSide(color: colors.outlineVariant.withValues(alpha: .6)),
+          top: BorderSide(color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55)),
         ),
       ),
       child: Column(
@@ -3130,7 +3146,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
+            padding: const EdgeInsets.fromLTRB(10, 8, 12, 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -3138,51 +3154,93 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   tooltip: 'Mais ações da mensagem',
                   icon: _sendingFile
                       ? const SizedBox.square(
-                          dimension: 18,
+                          dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.add_rounded),
+                      : Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: colors.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+                            ),
+                          ),
+                          child: Icon(Icons.add_rounded, size: 20, color: colors.onSurface),
+                        ),
                   onSelected: (action) => action(),
                   itemBuilder: (context) => [
                     if (!widget.conversation.isSavedMessages)
                       PopupMenuItem(
                         enabled: canSend && !_sendingFile,
                         value: _sendFile,
-                        child: const Text('Anexar arquivo'),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.attach_file_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Anexar arquivo'),
+                          ],
+                        ),
                       ),
                     if (!widget.conversation.isGroup &&
                         !widget.conversation.isSavedMessages)
                       CheckedPopupMenuItem(
                         checked: _viewOnceMode,
                         value: () => setState(() => _viewOnceMode = !_viewOnceMode),
-                        child: const Text('Visualização única'),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.local_fire_department_rounded, size: 18, color: Colors.amber),
+                            SizedBox(width: 10),
+                            Text('Visualização única'),
+                          ],
+                        ),
                       ),
                     if (widget.conversation.isGroup || widget.conversation.isCommunity)
                       PopupMenuItem(
                         enabled: canSend,
                         value: _showCreatePollDialog,
-                        child: const Text('Criar enquete'),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.poll_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Criar enquete'),
+                          ],
+                        ),
                       ),
                     PopupMenuItem(
                       enabled: canSend && !_sending,
                       value: _sendVoiceMemo,
-                      child: const Text('Gravar áudio'),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.mic_rounded, size: 18),
+                          SizedBox(width: 10),
+                          Text('Gravar áudio'),
+                        ],
+                      ),
                     ),
                     PopupMenuItem(
                       enabled: canSend,
                       value: _showScheduleSendDialog,
-                      child: const Text('Agendar mensagem'),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.schedule_send_rounded, size: 18),
+                          SizedBox(width: 10),
+                          Text('Agendar mensagem'),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(22),
+                      color: isDark
+                          ? colors.surfaceContainerHighest.withValues(alpha: 0.45)
+                          : colors.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: colors.outlineVariant.withValues(alpha: 0.7),
+                        color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
@@ -3197,7 +3255,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       textInputAction: _settings.settings.enterIsSend
                           ? TextInputAction.send
                           : TextInputAction.newline,
-                      style: const TextStyle(fontSize: 14.5),
+                      style: const TextStyle(fontSize: 14),
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -3205,10 +3263,14 @@ class _P2PChatPageState extends State<P2PChatPage> {
                         filled: false,
                         contentPadding: const EdgeInsets.symmetric(vertical: 10),
                         hintText: widget.conversation.isSavedMessages
-                            ? 'Escreva uma nota'
+                            ? 'Escreva uma nota segura...'
                             : (_connection.canSend
-                                ? 'Escreva uma mensagem'
-                                : 'Conecte-se para enviar'),
+                                ? 'Escreva uma mensagem...'
+                                : 'Conecte-se para enviar mensagens'),
+                        hintStyle: TextStyle(
+                          color: colors.onSurfaceVariant.withValues(alpha: 0.65),
+                          fontSize: 13.5,
+                        ),
                         counterText: '',
                       ),
                       onSubmitted: (_) {
@@ -3223,7 +3285,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                 IconButton.filled(
                   tooltip: 'Enviar mensagem',
                   onPressed: canSend && !_sending ? _sendMessage : null,
-                  icon: const Icon(Icons.arrow_upward_rounded),
+                  icon: const Icon(Icons.arrow_upward_rounded, size: 19),
                 ),
               ],
             ),

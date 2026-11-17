@@ -469,25 +469,27 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Widget _buildFilterChip(String id, String label, IconData icon) {
+  Widget _buildFilterChip(String id, String label, IconData icon, int count) {
     final colors = Theme.of(context).colorScheme;
     final selected = _chatFilter == id;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
       color: selected
-          ? colors.primary.withValues(alpha: 0.16)
-          : colors.surfaceContainerHighest.withValues(alpha: 0.4),
+          ? (isDark ? colors.primary.withValues(alpha: 0.18) : colors.primary.withValues(alpha: 0.12))
+          : (isDark ? colors.surface.withValues(alpha: 0.6) : colors.surfaceContainerHighest.withValues(alpha: 0.45)),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => setState(() => _chatFilter = id),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7.5),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected
-                  ? colors.primary.withValues(alpha: 0.45)
-                  : colors.outlineVariant.withValues(alpha: 0.5),
+                  ? colors.primary.withValues(alpha: 0.4)
+                  : colors.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
               width: 1,
             ),
           ),
@@ -496,18 +498,39 @@ class _HomePageState extends State<HomePage> {
             children: [
               Icon(
                 icon,
-                size: 16,
-                color: selected ? colors.primary : colors.onSurfaceVariant,
+                size: 15,
+                color: selected ? colors.primary : colors.onSurfaceVariant.withValues(alpha: 0.8),
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? colors.primary : colors.onSurface,
+                  color: selected ? colors.primary : colors.onSurface.withValues(alpha: 0.9),
+                  letterSpacing: -0.1,
                 ),
               ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colors.primary.withValues(alpha: 0.2)
+                        : colors.onSurface.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? colors.primary : colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -518,9 +541,14 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = _service.currentUser;
-    final filteredByTab = _service.conversations.where((c) {
-      if (c.isCommunity) return false;
+    final nonCommunity = _service.conversations.where((c) => !c.isCommunity).toList();
+    final totalCount = nonCommunity.length;
+    final directCount = nonCommunity.where((c) => !c.isGroup && !c.isSavedMessages).length;
+    final groupsCount = nonCommunity.where((c) => c.isGroup).length;
+
+    final filteredByTab = nonCommunity.where((c) {
       if (_chatFilter == 'direct') {
         return !c.isGroup && !c.isSavedMessages;
       }
@@ -549,60 +577,94 @@ class _HomePageState extends State<HomePage> {
         cacheExtent: 800.0,
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
             sliver: SliverList.list(
               children: [
-                const PageHeading(
-                  title: 'Conversas',
-                  description: 'Envie mensagens e faça chamadas com seus contatos.',
-                ),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Expanded(
+                      child: PageHeading(
+                        title: 'Conversas',
+                        description: 'Criptografia direta peer-to-peer sem servidores.',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     FilledButton.icon(
                       onPressed: _create,
-                      icon: const Icon(Icons.edit_outlined),
+                      icon: const Icon(Icons.add_rounded, size: 19),
                       label: const Text('Nova conversa'),
                     ),
+                    const SizedBox(width: 6),
                     PopupMenuButton<VoidCallback>(
                       tooltip: 'Mais ações de conversa',
                       onSelected: (action) => action(),
                       itemBuilder: (context) => [
                         PopupMenuItem(
                           value: _createGroup,
-                          child: const Text('Criar grupo'),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.group_add_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Criar grupo'),
+                            ],
+                          ),
                         ),
                         PopupMenuItem(
                           value: _joinGroup,
-                          child: const Text('Entrar em grupo'),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.login_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Entrar em grupo'),
+                            ],
+                          ),
                         ),
                         PopupMenuItem(
                           value: () async {
-                            final vault = await _service
-                                .getOrCreateSavedMessages();
+                            final vault = await _service.getOrCreateSavedMessages();
                             if (mounted) _open(vault);
                           },
-                          child: const Text('Mensagens salvas'),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.bookmark_outline_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Mensagens salvas'),
+                            ],
+                          ),
                         ),
+                        if (user.publicKey.isNotEmpty)
+                          PopupMenuItem(
+                            value: _copyMyKey,
+                            child: const Row(
+                              children: [
+                                Icon(Icons.copy_rounded, size: 18),
+                                SizedBox(width: 10),
+                                Text('Copiar meu código P2P'),
+                              ],
+                            ),
+                          ),
                       ],
-                      icon: const Icon(Icons.more_horiz_rounded),
-                    ),
-                    TextButton.icon(
-                      onPressed: user.publicKey.isEmpty ? null : _copyMyKey,
-                      icon: const Icon(Icons.copy_outlined, size: 18),
-                      label: const Text('Copiar meu código de contato'),
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6),
+                          ),
+                        ),
+                        child: Icon(Icons.more_horiz_rounded, size: 18, color: colors.onSurface),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
                 TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Buscar conversas',
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    hintText: 'Buscar por nome, apelido ou mensagem...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
                     suffixIcon: _query.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
@@ -614,29 +676,29 @@ class _HomePageState extends State<HomePage> {
                           )
                         : null,
                     filled: true,
-                    fillColor: colors.surfaceContainerHighest.withValues(
-                      alpha: .25,
-                    ),
+                    fillColor: isDark
+                        ? colors.surface.withValues(alpha: 0.6)
+                        : colors.surfaceContainerHighest.withValues(alpha: 0.4),
                     contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 13,
+                      horizontal: 16,
+                      vertical: 12,
                     ),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: colors.outlineVariant.withValues(alpha: .4),
+                        color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.5),
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: colors.outlineVariant.withValues(alpha: .4),
+                        color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.5),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: colors.primary.withValues(alpha: .7),
+                        color: colors.primary,
                         width: 1.5,
                       ),
                     ),
@@ -644,28 +706,30 @@ class _HomePageState extends State<HomePage> {
                   onChanged: (value) =>
                       setState(() => _query = value.trim().toLowerCase()),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildFilterChip('all', 'Todas', Icons.forum_rounded),
+                      _buildFilterChip('all', 'Todas', Icons.forum_rounded, totalCount),
                       const SizedBox(width: 8),
                       _buildFilterChip(
                         'direct',
                         'Contatos',
                         Icons.person_rounded,
+                        directCount,
                       ),
                       const SizedBox(width: 8),
                       _buildFilterChip(
                         'groups',
                         'Grupos',
                         Icons.groups_rounded,
+                        groupsCount,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -673,69 +737,106 @@ class _HomePageState extends State<HomePage> {
             SliverFillRemaining(
               hasScrollBody: false,
               child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 68,
-                      height: 68,
-                      decoration: BoxDecoration(
-                        color: colors.primaryContainer.withValues(alpha: .38),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: colors.primary.withValues(alpha: .25),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.forum_outlined,
-                        size: 30,
-                        color: colors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: FrostedCard(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: colors.primary.withValues(alpha: .12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: colors.primary.withValues(alpha: .25),
+                              ),
+                            ),
+                            child: Icon(
+                              _query.isNotEmpty
+                                  ? Icons.search_off_rounded
+                                  : (_chatFilter == 'groups'
+                                      ? Icons.groups_outlined
+                                      : Icons.forum_outlined),
+                              size: 28,
+                              color: colors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            _query.isEmpty
+                                ? (_chatFilter == 'groups'
+                                    ? 'Nenhum grupo ativo'
+                                    : 'Nenhuma conversa ainda')
+                                : 'Nenhum resultado encontrado',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _query.isEmpty
+                                ? (_chatFilter == 'groups'
+                                    ? 'Crie um grupo ou entre com um convite criptografado.'
+                                    : 'Adicione um contato com o código P2P dele para iniciar um chat privado.')
+                                : 'Verifique se digitou o nome corretamente ou limpe o campo de busca.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          if (_query.isNotEmpty)
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _query = '');
+                              },
+                              icon: const Icon(Icons.clear_rounded, size: 16),
+                              label: const Text('Limpar busca'),
+                            )
+                          else if (_chatFilter == 'groups')
+                            FilledButton.icon(
+                              onPressed: _createGroup,
+                              icon: const Icon(Icons.add_rounded, size: 17),
+                              label: const Text('Criar novo grupo'),
+                            )
+                          else
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: _create,
+                                  icon: const Icon(Icons.person_add_rounded, size: 17),
+                                  label: const Text('Iniciar conversa'),
+                                ),
+                                const SizedBox(width: 10),
+                                OutlinedButton.icon(
+                                  onPressed: _joinGroup,
+                                  icon: const Icon(Icons.login_rounded, size: 16),
+                                  label: const Text('Entrar em grupo'),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 22),
-                    Text(
-                      _query.isEmpty
-                          ? (_chatFilter == 'groups'
-                                ? 'Nenhum grupo'
-                                : 'Nenhuma conversa ainda')
-                          : 'Nenhuma conversa encontrada',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _query.isEmpty
-                          ? (_chatFilter == 'groups'
-                                ? 'Crie um grupo ou use um convite para entrar.'
-                                : 'Peça o código de contato de alguém para iniciar uma conversa.')
-                          : 'Tente buscar por outro apelido ou nome de grupo.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        height: 1.55,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    if (_query.isEmpty && _chatFilter == 'groups')
-                      FilledButton(
-                        onPressed: _createGroup,
-                        child: const Text('Criar grupo'),
-                      )
-                    else if (_query.isEmpty)
-                      FilledButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.key_rounded, size: 18),
-                        label: const Text('Nova conversa'),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
               sliver: SliverList.builder(
                 itemCount: conversations.length,
                 findChildIndexCallback: (Key key) {
@@ -751,7 +852,7 @@ class _HomePageState extends State<HomePage> {
                       _settings.settings.layoutDensity == 'compact';
                   return Padding(
                     key: ValueKey('conv_${conversations[index].id}'),
-                    padding: EdgeInsets.only(bottom: isCompact ? 6 : 10),
+                    padding: EdgeInsets.only(bottom: isCompact ? 6 : 9),
                     child: ConversationTile(
                       conversation: conversations[index],
                       displayName: _service.conversationName(

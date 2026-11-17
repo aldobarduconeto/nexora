@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 
 /// Platform channel bridge for frameless window management on desktop (Windows, macOS, Linux).
 /// Falls back silently on unsupported platforms (Web, Android, iOS).
-class WindowService {
+class WindowService extends ChangeNotifier {
   WindowService._();
   static final WindowService instance = WindowService._();
 
@@ -28,6 +28,7 @@ class WindowService {
     try {
       await _channel.invokeMethod('maximize');
       _isMaximized = !_isMaximized;
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -49,7 +50,9 @@ class WindowService {
     if (!isDesktop) return false;
     try {
       final res = await _channel.invokeMethod<bool>('isMaximized');
+      final changed = _isMaximized != (res ?? false);
       _isMaximized = res ?? false;
+      if (changed) notifyListeners();
       return _isMaximized;
     } catch (_) {
       return false;

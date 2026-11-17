@@ -47,6 +47,10 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     _tabsService.addListener(_refresh);
     _settingsService.addListener(_refresh);
     _localData.addListener(_refresh);
+    _windowService.addListener(_refresh);
+    if (_windowService.isDesktop) {
+      _windowService.checkIsMaximized();
+    }
   }
 
   @override
@@ -54,6 +58,7 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     _tabsService.removeListener(_refresh);
     _settingsService.removeListener(_refresh);
     _localData.removeListener(_refresh);
+    _windowService.removeListener(_refresh);
     _tabsScrollController.dispose();
     super.dispose();
   }
@@ -610,17 +615,22 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
                               ),
 
                             // Quick Theme Toggle (Sol / Lua)
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
-                              icon: Icon(
-                                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                                size: 17,
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+                                icon: Icon(
+                                  isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                                  size: 16,
+                                ),
+                                onPressed: widget.onToggleTheme ??
+                                    () => _settingsService.updateSetting(
+                                          (s) => s.copyWith(isDarkMode: !s.isDarkMode),
+                                        ),
                               ),
-                              onPressed: widget.onToggleTheme ??
-                                  () => _settingsService.updateSetting(
-                                        (s) => s.copyWith(isDarkMode: !s.isDarkMode),
-                                      ),
                             ),
 
                             // Notifications Bell
@@ -628,14 +638,19 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
                               listenable: NotificationService.instance,
                               builder: (context, _) {
                                 final count = NotificationService.instance.history.length;
-                                return IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  tooltip: 'Notificações',
-                                  onPressed: widget.onNotificationsPressed,
-                                  icon: Badge(
-                                    isLabelVisible: count > 0,
-                                    smallSize: 7,
-                                    child: const Icon(Icons.notifications_none_rounded, size: 18),
+                                return SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: IconButton(
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                    tooltip: 'Notificações',
+                                    onPressed: widget.onNotificationsPressed,
+                                    icon: Badge(
+                                      isLabelVisible: count > 0,
+                                      smallSize: 7,
+                                      child: const Icon(Icons.notifications_none_rounded, size: 17),
+                                    ),
                                   ),
                                 );
                               },
@@ -650,41 +665,48 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
                                 onOpenVault: widget.onOpenVault ?? () {},
                                 onOpenSettings: widget.onOpenSettings ?? () {},
                               ),
-                              const SizedBox(width: 6),
                             ],
                           ] else ...[
                             // Quick Theme Toggle for Minimal Header (Sign-in / onboarding)
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
-                              icon: Icon(
-                                isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                                size: 17,
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+                                icon: Icon(
+                                  isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                                  size: 16,
+                                ),
+                                onPressed: widget.onToggleTheme ??
+                                    () => _settingsService.updateSetting(
+                                          (s) => s.copyWith(isDarkMode: !s.isDarkMode),
+                                        ),
                               ),
-                              onPressed: widget.onToggleTheme ??
-                                  () => _settingsService.updateSetting(
-                                        (s) => s.copyWith(isDarkMode: !s.isDarkMode),
-                                      ),
                             ),
-                            const SizedBox(width: 4),
                           ],
 
                           // Desktop Window Action Buttons (Minimize, Maximize, Close)
                           if (isDesktop) ...[
-                            _WindowButton(
-                              icon: Icons.remove_rounded,
-                              tooltip: 'Minimizar',
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              height: 14,
+                              child: VerticalDivider(
+                                width: 1,
+                                thickness: 1,
+                                color: colors.outlineVariant.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            _WindowButton.minimize(
                               onPressed: _windowService.minimize,
                             ),
-                            _WindowButton(
-                              icon: Icons.crop_square_rounded,
-                              tooltip: 'Maximizar / Restaurar',
+                            _WindowButton.maximize(
+                              isMaximized: _windowService.isMaximized,
                               onPressed: _windowService.toggleMaximize,
                             ),
-                            _WindowButton(
-                              icon: Icons.close_rounded,
-                              tooltip: 'Fechar',
-                              isClose: true,
+                            _WindowButton.close(
                               onPressed: _windowService.close,
                             ),
                           ],
@@ -814,15 +836,63 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
 
 class _WindowButton extends StatefulWidget {
   const _WindowButton({
-    required this.icon,
+    super.key,
     required this.tooltip,
     required this.onPressed,
+    required this.builder,
     this.isClose = false,
   });
 
-  final IconData icon;
+  factory _WindowButton.minimize({
+    Key? key,
+    required VoidCallback onPressed,
+  }) {
+    return _WindowButton(
+      key: key,
+      tooltip: 'Minimizar',
+      onPressed: onPressed,
+      builder: (color) => CustomPaint(
+        size: const Size(10, 10),
+        painter: _MinimizePainter(color),
+      ),
+    );
+  }
+
+  factory _WindowButton.maximize({
+    Key? key,
+    required bool isMaximized,
+    required VoidCallback onPressed,
+  }) {
+    return _WindowButton(
+      key: key,
+      tooltip: isMaximized ? 'Restaurar' : 'Maximizar',
+      onPressed: onPressed,
+      builder: (color) => CustomPaint(
+        size: const Size(10, 10),
+        painter: isMaximized ? _RestorePainter(color) : _MaximizePainter(color),
+      ),
+    );
+  }
+
+  factory _WindowButton.close({
+    Key? key,
+    required VoidCallback onPressed,
+  }) {
+    return _WindowButton(
+      key: key,
+      tooltip: 'Fechar',
+      isClose: true,
+      onPressed: onPressed,
+      builder: (color) => CustomPaint(
+        size: const Size(10, 10),
+        painter: _ClosePainter(color),
+      ),
+    );
+  }
+
   final String tooltip;
   final VoidCallback onPressed;
+  final Widget Function(Color color) builder;
   final bool isClose;
 
   @override
@@ -835,7 +905,7 @@ class _WindowButtonState extends State<_WindowButton> {
   @override
   Widget build(BuildContext context) {
     Color bg = Colors.transparent;
-    Color fg = Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8);
+    Color fg = Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.85);
 
     if (_hovered) {
       if (widget.isClose) {
@@ -856,16 +926,99 @@ class _WindowButtonState extends State<_WindowButton> {
         child: GestureDetector(
           onTap: widget.onPressed,
           child: Container(
-            width: 44,
+            width: 46,
             height: double.infinity,
             alignment: Alignment.center,
             color: bg,
-            child: Icon(widget.icon, size: 13, color: fg),
+            child: widget.builder(fg),
           ),
         ),
       ),
     );
   }
+}
+
+class _MinimizePainter extends CustomPainter {
+  final Color color;
+  const _MinimizePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    // Align line horizontally at the baseline (matching bottom of maximize square)
+    canvas.drawLine(Offset(0, size.height - 0.5), Offset(size.width, size.height - 0.5), paint);
+  }
+
+  @override
+  bool shouldRepaint(_MinimizePainter oldDelegate) => oldDelegate.color != color;
+}
+
+class _MaximizePainter extends CustomPainter {
+  final Color color;
+  const _MaximizePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawRect(Rect.fromLTWH(0.5, 0.5, size.width - 1.0, size.height - 1.0), paint);
+  }
+
+  @override
+  bool shouldRepaint(_MaximizePainter oldDelegate) => oldDelegate.color != color;
+}
+
+class _RestorePainter extends CustomPainter {
+  final Color color;
+  const _RestorePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    // Back square (top right)
+    final backPath = Path()
+      ..moveTo(2.5, 0.5)
+      ..lineTo(size.width - 0.5, 0.5)
+      ..lineTo(size.width - 0.5, size.height - 2.5)
+      ..lineTo(size.width - 2.5, size.height - 2.5)
+      ..moveTo(2.5, 0.5)
+      ..lineTo(2.5, 2.5);
+    canvas.drawPath(backPath, paint);
+
+    // Front square (bottom left)
+    canvas.drawRect(Rect.fromLTWH(0.5, 2.5, size.width - 3.0, size.height - 3.0), paint);
+  }
+
+  @override
+  bool shouldRepaint(_RestorePainter oldDelegate) => oldDelegate.color != color;
+}
+
+class _ClosePainter extends CustomPainter {
+  final Color color;
+  const _ClosePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    canvas.drawLine(const Offset(0.5, 0.5), Offset(size.width - 0.5, size.height - 0.5), paint);
+    canvas.drawLine(Offset(size.width - 0.5, 0.5), Offset(0.5, size.height - 0.5), paint);
+  }
+
+  @override
+  bool shouldRepaint(_ClosePainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _SearchBarCapsule extends StatefulWidget {

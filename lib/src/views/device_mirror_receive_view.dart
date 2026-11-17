@@ -242,10 +242,17 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 540),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
+              child: FrostedCard(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: colors.outlineVariant.withValues(alpha: 0.35),
+                  width: 1.1,
+                ),
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
                   // Cabeçalho explicativo
                   const Text(
                     'Vincular Dispositivo',
@@ -498,6 +505,7 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 abstract final class AppTheme {
@@ -23,34 +24,34 @@ abstract final class AppTheme {
       brightness: brightness,
     );
 
-    // Paleta clean & moderna com tons refinados e contraste perfeito
+    // Paleta clean & moderna inspirada em Linear & Telegram Desktop (Modern Minimal / Frosted)
     final background = (dark && isAmoled)
         ? Colors.black
         : Color.lerp(
-            dark ? const Color(0xFF090D18) : const Color(0xFFF8FAFC),
+            dark ? const Color(0xFF0A0F1D) : const Color(0xFFF8FAFD),
             accent,
-            dark ? .05 : .015,
+            dark ? .035 : .012,
           )!;
 
     final surface = (dark && isAmoled)
-        ? const Color(0xFF0D121F)
+        ? const Color(0xFF0D1424)
         : Color.lerp(
-            dark ? const Color(0xFF111728) : Colors.white,
+            dark ? const Color(0xFF111827) : Colors.white,
             accent,
-            dark ? .06 : .01,
+            dark ? .045 : .008,
           )!;
 
     final surfaceContainer = (dark && isAmoled)
-        ? const Color(0xFF141C2E)
+        ? const Color(0xFF131D33)
         : Color.lerp(
-            dark ? const Color(0xFF182035) : const Color(0xFFF1F5F9),
+            dark ? const Color(0xFF172036) : const Color(0xFFF1F5F9),
             accent,
-            dark ? .08 : .02,
+            dark ? .06 : .015,
           )!;
 
     final outlineVariant = dark
-        ? Color.lerp(const Color(0xFF243048), accent, .12)!
-        : Color.lerp(const Color(0xFFE2E8F0), accent, .08)!;
+        ? Color.lerp(const Color(0xFF222F49), accent, .08)!
+        : Color.lerp(const Color(0xFFE2E8F0), accent, .06)!;
 
     final scheme = base.copyWith(
       primary: dark ? accent : Color.lerp(accent, Colors.black, .32),
@@ -60,8 +61,8 @@ abstract final class AppTheme {
     );
 
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(cardRadius * 0.75),
-      borderSide: BorderSide(color: scheme.outlineVariant, width: 1.2),
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6), width: 1.1),
     );
 
     return ThemeData(
@@ -88,72 +89,84 @@ abstract final class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7), width: 1),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45), width: 1),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(cardRadius + 6),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.8), width: 1.2),
+          borderRadius: BorderRadius.circular(cardRadius + 4),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6), width: 1.2),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(cardRadius * 0.7),
+          borderRadius: BorderRadius.circular(14),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
         border: border,
         enabledBorder: border,
         focusedBorder: border.copyWith(
-          borderSide: BorderSide(color: scheme.primary, width: 1.8),
+          borderSide: BorderSide(color: scheme.primary, width: 1.6),
         ),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 14,
+          horizontal: 16,
+          vertical: 13,
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 46),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           textStyle: const TextStyle(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
+            fontSize: 13.5,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(cardRadius * 0.7),
+            borderRadius: BorderRadius.circular(13),
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(48, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-          side: BorderSide(color: scheme.outlineVariant, width: 1.2),
+          minimumSize: const Size(44, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7), width: 1.1),
           textStyle: const TextStyle(
             fontWeight: FontWeight.w600,
             letterSpacing: -0.1,
+            fontSize: 13.5,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(cardRadius * 0.7),
+            borderRadius: BorderRadius.circular(13),
           ),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outlineVariant.withValues(alpha: 0.7),
+        color: scheme.outlineVariant.withValues(alpha: 0.45),
         space: 1,
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        radius: const Radius.circular(8),
+        thickness: WidgetStateProperty.all(5),
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged)) {
+            return scheme.primary.withValues(alpha: 0.5);
+          }
+          return scheme.onSurfaceVariant.withValues(alpha: 0.2);
+        }),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surface,
         indicatorColor: scheme.primary.withValues(alpha: 0.16),
         indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
         ),
         elevation: 0,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -170,7 +183,7 @@ abstract final class AppTheme {
         backgroundColor: scheme.surface,
         indicatorColor: scheme.primary.withValues(alpha: 0.16),
         indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
         ),
         selectedLabelTextStyle: TextStyle(
           color: scheme.primary,
@@ -217,10 +230,16 @@ class _NoTransition extends PageTransitionsBuilder {
 }
 
 class PageHeading extends StatelessWidget {
-  const PageHeading({super.key, required this.title, required this.description});
+  const PageHeading({
+    super.key,
+    required this.title,
+    required this.description,
+    this.badge,
+  });
 
   final String title;
   final String description;
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -228,21 +247,92 @@ class PageHeading extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (badge != null) ...[
+          badge!,
+          const SizedBox(height: 8),
+        ],
         Text(
           title,
-          style: theme.textTheme.headlineLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -1,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.6,
+            height: 1.2,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 5),
         Text(
           description,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+          style: TextStyle(
+            fontSize: 13.5,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+            height: 1.35,
           ),
         ),
       ],
+    );
+  }
+}
+
+class FrostedCard extends StatelessWidget {
+  const FrostedCard({
+    super.key,
+    required this.child,
+    this.borderRadius = 18.0,
+    this.padding = const EdgeInsets.all(20),
+    this.borderWidth = 1.0,
+    this.borderColor,
+    this.backgroundColor,
+    this.onTap,
+  });
+
+  final Widget child;
+  final double borderRadius;
+  final EdgeInsetsGeometry padding;
+  final double borderWidth;
+  final Color? borderColor;
+  final Color? backgroundColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final bg = backgroundColor ??
+        (isDark
+            ? colors.surface.withValues(alpha: 0.65)
+            : colors.surface.withValues(alpha: 0.85));
+
+    final border = borderColor ?? colors.outlineVariant.withValues(alpha: 0.45);
+
+    Widget content = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: border, width: borderWidth),
+      ),
+      child: child,
+    );
+
+    if (onTap != null) {
+      content = Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(borderRadius),
+          onTap: onTap,
+          child: content,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: content,
+      ),
     );
   }
 }

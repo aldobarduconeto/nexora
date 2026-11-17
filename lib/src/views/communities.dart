@@ -362,7 +362,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                       width: 44,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.35),
+                        color: Colors.grey.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -410,7 +410,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest.withOpacity(0.4),
+                        color: colors.surfaceContainerHighest.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -449,7 +449,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant.withOpacity(0.4)),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -540,7 +540,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: colors.outlineVariant.withOpacity(0.4)),
+                      border: Border.all(color: colors.outlineVariant.withValues(alpha: 0.4)),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
@@ -561,7 +561,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.2),
+                                    color: Colors.amber.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text('Criador', style: TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.bold)),
@@ -570,7 +570,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: Colors.teal.withOpacity(0.2),
+                                    color: const Color(0xFF00DC82).withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text('Admin', style: TextStyle(fontSize: 10, color: Colors.tealAccent, fontWeight: FontWeight.bold)),
@@ -1042,6 +1042,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = _settings.settings.layoutDensity == 'compact';
 
     final communities = _service.conversations.where((c) {
@@ -1198,9 +1199,14 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   return Padding(
                     key: ValueKey('comm_${comm.id}'),
                     padding: EdgeInsets.only(bottom: isCompact ? 10 : 14),
-                    child: Card(
-                      clipBehavior: Clip.antiAlias,
+                    child: FrostedCard(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6),
+                        width: 1.1,
+                      ),
                       child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
                         onTap: () => _open(comm),
                         child: Padding(
                           padding: EdgeInsets.all(isCompact ? 14 : 18),
@@ -1248,20 +1254,25 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                                                 style: const TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w700,
+                                                  letterSpacing: -0.2,
                                                 ),
                                               ),
                                             ),
                                             const SizedBox(width: 8),
                                             Container(
                                               padding: const EdgeInsets.symmetric(
-                                                horizontal: 6,
-                                                vertical: 2,
+                                                horizontal: 7,
+                                                vertical: 2.5,
                                               ),
                                               decoration: BoxDecoration(
                                                 color: colors.primary
-                                                    .withValues(alpha: .14),
+                                                    .withValues(alpha: .12),
                                                 borderRadius:
                                                     BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: colors.primary.withValues(alpha: 0.25),
+                                                  width: 1,
+                                                ),
                                               ),
                                               child: Text(
                                                 'COMUNIDADE',
@@ -1269,6 +1280,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                                                   fontSize: 9,
                                                   fontWeight: FontWeight.w800,
                                                   color: colors.primary,
+                                                  letterSpacing: 0.4,
                                                 ),
                                               ),
                                             ),
@@ -1503,7 +1515,10 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                               // Last message snippet if present
                               if (lastMessage != null) ...[
                                 const SizedBox(height: 10),
-                                const Divider(height: 1),
+                                Divider(
+                                  height: 1,
+                                  color: colors.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+                                ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [

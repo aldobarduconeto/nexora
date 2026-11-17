@@ -79,6 +79,7 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = displayName;
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final lastTime = conversation.messages.isNotEmpty
         ? conversation.messages.last.sentAt
         : conversation.updatedAt;
@@ -88,172 +89,212 @@ class ConversationTile extends StatelessWidget {
       orElse: () => conversation.id,
     );
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+    final cardBg = isDark
+        ? (conversation.isPinned
+            ? colors.surfaceContainerHighest.withValues(alpha: 0.45)
+            : colors.surface.withValues(alpha: 0.75))
+        : (conversation.isPinned
+            ? colors.primary.withValues(alpha: 0.05)
+            : colors.surface);
+
+    final borderColor = conversation.isPinned
+        ? colors.primary.withValues(alpha: 0.35)
+        : colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: colors.outlineVariant.withValues(alpha: 0.6),
-          width: 1,
-        ),
+        border: Border.all(color: borderColor, width: 1.1),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
-      child: InkWell(
+      child: Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
-        onTap: onOpen,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: isCompact ? 10 : 13,
-          ),
-          child: Row(
-            children: [
-              CryptoAvatar(
-                seedKey: seedKey,
-                title: title,
-                isGroup: conversation.isGroup,
-                isCommunity: conversation.isCommunity,
-                isSavedMessages: conversation.isSavedMessages,
-                size: isCompact ? 42 : 48,
-                isBlocked: isBlocked,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onOpen,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: isCompact ? 9 : 12,
+            ),
+            child: Row(
+              children: [
+                Stack(
                   children: [
-                    Row(
-                      children: [
-                        if (conversation.isPinned) ...[
-                          Icon(
-                            Icons.push_pin_rounded,
-                            size: 13.5,
+                    CryptoAvatar(
+                      seedKey: seedKey,
+                      title: title,
+                      isGroup: conversation.isGroup,
+                      isCommunity: conversation.isCommunity,
+                      isSavedMessages: conversation.isSavedMessages,
+                      size: isCompact ? 42 : 46,
+                      isBlocked: isBlocked,
+                    ),
+                    if (conversation.isPinned)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
                             color: colors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: colors.surface, width: 1.5),
                           ),
-                          const SizedBox(width: 4),
-                        ],
-                        if (conversation.isMuted) ...[
-                          Icon(
-                            Icons.volume_off_rounded,
-                            size: 13.5,
-                            color: colors.onSurfaceVariant,
+                          child: const Icon(
+                            Icons.push_pin_rounded,
+                            size: 9,
+                            color: Colors.white,
                           ),
-                          const SizedBox(width: 4),
-                        ],
-                        if (!conversation.isGroup &&
-                            conversation.isSafetyVerified) ...[
-                          const Icon(
-                            Icons.verified_user_rounded,
-                            size: 13.5,
-                            color: Colors.green,
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        if (conversation.isCommunity) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1.5,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (conversation.isMuted) ...[
+                            Icon(
+                              Icons.volume_off_rounded,
+                              size: 13,
+                              color: colors.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: .14),
-                              borderRadius: BorderRadius.circular(6),
+                            const SizedBox(width: 4),
+                          ],
+                          if (!conversation.isGroup &&
+                              conversation.isSafetyVerified) ...[
+                            const Icon(
+                              Icons.verified_user_rounded,
+                              size: 13,
+                              color: Color(0xFF00DC82),
                             ),
-                            child: Text(
-                              'COMUNIDADE',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w800,
-                                color: colors.primary,
+                            const SizedBox(width: 4),
+                          ],
+                          if (conversation.isCommunity) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: .14),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'COMUNIDADE',
+                                style: TextStyle(
+                                  fontSize: 9.0,
+                                  fontWeight: FontWeight.w800,
+                                  color: colors.primary,
+                                  letterSpacing: 0.2,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: isCompact ? 14 : 15,
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatRelativeTime(lastTime),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3.5),
-                    Row(
-                      children: [
-                        Icon(
-                          isBlocked
-                              ? Icons.block_rounded
-                              : Icons.lock_outline_rounded,
-                          size: 12.5,
-                          color: isBlocked ? colors.error : colors.primary,
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: StealthBlur(
-                            enabled: stealthMode && conversation.messages.isNotEmpty,
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
                             child: Text(
-                              _subtitlePreview(),
+                              title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: colors.onSurfaceVariant,
-                                fontSize: isCompact ? 12 : 12.5,
-                                height: 1.25,
+                                fontWeight: FontWeight.w700,
+                                fontSize: isCompact ? 13.5 : 14.5,
+                                letterSpacing: -0.2,
                               ),
                             ),
                           ),
-                        ),
-                        if (conversation.messages.isNotEmpty) ...[
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: colors.primary.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            child: Text(
-                              '${conversation.messages.length}',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: colors.primary,
-                              ),
+                          Text(
+                            _formatRelativeTime(lastTime),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: colors.onSurfaceVariant.withValues(alpha: 0.75),
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            isBlocked
+                                ? Icons.block_rounded
+                                : (conversation.isSavedMessages
+                                    ? Icons.bookmark_rounded
+                                    : Icons.lock_outline_rounded),
+                            size: 12,
+                            color: isBlocked
+                                ? colors.error
+                                : colors.primary.withValues(alpha: 0.8),
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: StealthBlur(
+                              enabled: stealthMode && conversation.messages.isNotEmpty,
+                              child: Text(
+                                _subtitlePreview(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+                                  fontSize: isCompact ? 11.5 : 12,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (conversation.messages.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: colors.primary.withValues(alpha: 0.2),
+                                ),
+                              ),
+                              child: Text(
+                                '${conversation.messages.length}',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              if (onManage == null)
-                Icon(
-                  isBlocked ? Icons.block : Icons.chevron_right_rounded,
-                  color: colors.onSurfaceVariant,
-                )
+                const SizedBox(width: 4),
+                if (onManage == null)
+                  Icon(
+                    isBlocked ? Icons.block : Icons.chevron_right_rounded,
+                    color: colors.onSurfaceVariant.withValues(alpha: 0.5),
+                    size: 18,
+                  )
               else
                 PopupMenuButton<String>(
                   tooltip: 'Gerenciar conversa',

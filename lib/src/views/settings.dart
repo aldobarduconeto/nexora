@@ -337,7 +337,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           Icon(
                             Icons.check_circle_outline_rounded,
                             size: 48,
-                            color: colors.primary.withOpacity(0.5),
+                            color: colors.primary.withValues(alpha: 0.5),
                           ),
                           const SizedBox(height: 12),
                           const Text(
@@ -369,7 +369,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                           leading: CircleAvatar(
-                            backgroundColor: colors.primary.withOpacity(0.15),
+                            backgroundColor: colors.primary.withValues(alpha: 0.15),
                             child: Icon(Icons.access_time_rounded, color: colors.primary, size: 20),
                           ),
                           title: Text(
@@ -446,7 +446,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 decoration: BoxDecoration(
                   color: Colors.black26,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
                 ),
                 child: SelectableText(
                   base64Seed,
@@ -504,9 +504,18 @@ class _SettingsPageState extends State<SettingsPage> {
     required List<Widget> children,
   }) {
     final colors = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isDark ? colors.surface.withValues(alpha: 0.75) : colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6),
+          width: 1.1,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -517,7 +526,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: colors.primary.withOpacity(0.12),
+                    color: colors.primary.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: colors.primary, size: 20),
@@ -603,12 +612,26 @@ class _SettingsPageState extends State<SettingsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isOk ? Colors.teal.withOpacity(0.18) : Colors.amber.withOpacity(0.18),
+        color: isOk
+            ? const Color(0xFF00DC82).withValues(alpha: 0.16)
+            : Colors.amber.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isOk ? Colors.tealAccent.shade400.withOpacity(0.5) : Colors.amber.withOpacity(0.5),
+          color: isOk
+              ? const Color(0xFF00DC82).withValues(alpha: 0.45)
+              : Colors.amber.withValues(alpha: 0.45),
         ),
       ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: isOk ? const Color(0xFF00DC82) : Colors.amber.shade700,
+        ),
+      ),
+    );
+  }
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -688,7 +711,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             avatar: Icon(
                               cat.icon,
                               size: 16,
-                              color: colors.onSurfaceVariant,
+                              color: isSelected ? colors.primary : colors.onSurfaceVariant,
                             ),
                             label: Text(cat.label),
                             selected: isSelected,
@@ -756,14 +779,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              colors.primary.withOpacity(0.18),
-                              colors.surfaceContainerHighest.withOpacity(0.35),
+                              colors.primary.withValues(alpha: 0.16),
+                              colors.surfaceContainerHighest.withValues(alpha: 0.35),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: colors.primary.withOpacity(0.35), width: 1.5),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: colors.primary.withValues(alpha: 0.3), width: 1.2),
                         ),
                         child: Column(
                           children: [
@@ -1167,11 +1190,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                         duration: const Duration(milliseconds: 180),
                                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                         decoration: BoxDecoration(
-                                          color: isSelected ? c.$3.withOpacity(0.22) : colors.surface,
+                                          color: isSelected ? c.$3.withValues(alpha: 0.18) : colors.surface,
                                           borderRadius: BorderRadius.circular(16),
                                           border: Border.all(
-                                            color: isSelected ? c.$3 : colors.outlineVariant.withOpacity(0.5),
-                                            width: isSelected ? 2 : 1,
+                                            color: isSelected ? c.$3 : colors.outlineVariant.withValues(alpha: 0.4),
+                                            width: isSelected ? 1.8 : 1,
                                           ),
                                         ),
                                         child: Row(

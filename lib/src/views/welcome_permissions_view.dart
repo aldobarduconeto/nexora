@@ -77,13 +77,15 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141926) : const Color(0xFFF4F6F9),
+        color: isDark
+            ? colors.surfaceContainerHighest.withValues(alpha: 0.35)
+            : colors.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isGranted
-              ? Colors.tealAccent.shade700.withOpacity(0.5)
-              : colors.outlineVariant.withOpacity(0.4),
-          width: 1.2,
+              ? const Color(0xFF00DC82).withValues(alpha: 0.45)
+              : colors.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.6),
+          width: 1.1,
         ),
       ),
       child: Row(
@@ -93,14 +95,14 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: isGranted
-                  ? Colors.teal.withOpacity(0.18)
-                  : colors.primary.withOpacity(0.12),
+                  ? const Color(0xFF00DC82).withValues(alpha: 0.16)
+                  : colors.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Icon(
               icon,
-              color: isGranted ? Colors.tealAccent.shade400 : colors.primary,
-              size: 22,
+              color: isGranted ? const Color(0xFF00DC82) : colors.primary,
+              size: 20,
             ),
           ),
           const SizedBox(width: 14),
@@ -115,7 +117,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                         title,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                          fontSize: 14.5,
                         ),
                       ),
                     ),
@@ -123,17 +125,17 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
-                        vertical: 4,
+                        vertical: 3.5,
                       ),
                       decoration: BoxDecoration(
                         color: isGranted
-                            ? Colors.teal.withOpacity(0.2)
-                            : Colors.amber.withOpacity(0.15),
+                            ? const Color(0xFF00DC82).withValues(alpha: 0.15)
+                            : Colors.amber.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: isGranted
-                              ? Colors.tealAccent.shade400.withOpacity(0.6)
-                              : Colors.amber.shade600.withOpacity(0.5),
+                              ? const Color(0xFF00DC82).withValues(alpha: 0.5)
+                              : Colors.amber.withValues(alpha: 0.5),
                         ),
                       ),
                       child: Row(
@@ -145,8 +147,8 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                                 : Icons.radio_button_unchecked_rounded,
                             size: 13,
                             color: isGranted
-                                ? Colors.tealAccent.shade400
-                                : Colors.amber.shade600,
+                                ? const Color(0xFF00DC82)
+                                : Colors.amber.shade700,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -155,7 +157,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: isGranted
-                                  ? Colors.tealAccent.shade400
+                                  ? const Color(0xFF00DC82)
                                   : Colors.amber.shade700,
                             ),
                           ),
@@ -169,7 +171,7 @@ class _WelcomePermissionsViewState extends State<WelcomePermissionsView> {
                   description,
                   style: TextStyle(
                     fontSize: 12.5,
-                    color: colors.onSurfaceVariant,
+                    color: colors.onSurfaceVariant.withValues(alpha: 0.85),
                     height: 1.3,
                   ),
                 ),

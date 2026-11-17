@@ -130,7 +130,7 @@ class _PushNotificationBannerState extends State<PushNotificationBanner>
                     constraints: const BoxConstraints(maxWidth: 520),
                     child: Material(
                       elevation: 8,
-                      shadowColor: Colors.black.withOpacity(0.35),
+                      shadowColor: Colors.black.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(20),
                       color: isDark ? const Color(0xFF161C2C) : Colors.white,
                       child: InkWell(
@@ -144,7 +144,7 @@ class _PushNotificationBannerState extends State<PushNotificationBanner>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: accent.withOpacity(0.35),
+                              color: accent.withValues(alpha: 0.35),
                               width: 1.4,
                             ),
                           ),
@@ -154,7 +154,7 @@ class _PushNotificationBannerState extends State<PushNotificationBanner>
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: accent.withOpacity(0.16),
+                                  color: accent.withValues(alpha: 0.16),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Icon(
@@ -196,7 +196,7 @@ class _PushNotificationBannerState extends State<PushNotificationBanner>
                                       item.body,
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: colors.onSurface.withOpacity(0.85),
+                                        color: colors.onSurface.withValues(alpha: 0.85),
                                         height: 1.25,
                                       ),
                                       maxLines: 2,

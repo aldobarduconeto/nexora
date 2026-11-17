@@ -313,9 +313,17 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
-              child: _authorizedResultCode != null
-                  ? _buildSuccessView(colors)
-                  : _buildScannerView(colors),
+              child: FrostedCard(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: colors.outlineVariant.withValues(alpha: 0.35),
+                  width: 1.1,
+                ),
+                padding: const EdgeInsets.all(28),
+                child: _authorizedResultCode != null
+                    ? _buildSuccessView(colors)
+                    : _buildScannerView(colors),
+              ),
             ),
           ),
         ),
