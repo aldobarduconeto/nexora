@@ -265,12 +265,27 @@ jobs:
   # 5. Job Unificado de Publicação nas Releases
   # ------------------------------------------------------
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name != 'pull_request'
     needs: [build-ubuntu, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Definir Tag e Título da Release
+        id: release_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            VERSION=$(grep '^version:' pubspec.yaml | head -n1 | cut -d ' ' -f 2 | cut -d '+' -f 1)
+            TAG="v${VERSION:-1.0.0}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "title=nexora $TAG - Release" >> $GITHUB_OUTPUT
+
       - name: Baixar todos os artefatos
         uses: actions/download-artifact@v4
         with:
@@ -288,8 +303,8 @@ jobs:
       - name: Criar GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || 'v1.0.0' }}
-          name: "nexora ${{ github.ref_name || 'v1.0.0' }} - Release"
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: ${{ steps.release_info.outputs.title }}
           files: release_assets/*
           generate_release_notes: true
           overwrite: true
