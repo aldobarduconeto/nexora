@@ -609,6 +609,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildStatusBadge(String label, bool isOk) {
+    final statusColor = isOk ? const Color(0xFF00DC82) : Colors.amber.shade700;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -622,23 +623,13 @@ class _SettingsPageState extends State<SettingsPage> {
               : Colors.amber.withValues(alpha: 0.45),
         ),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: isOk ? const Color(0xFF00DC82) : Colors.amber.shade700,
-        ),
-      ),
-    );
-  }
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             isOk ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
             size: 13,
-            color: isOk ? Colors.tealAccent.shade400 : Colors.amber.shade700,
+            color: statusColor,
           ),
           const SizedBox(width: 4),
           Text(
@@ -646,7 +637,7 @@ class _SettingsPageState extends State<SettingsPage> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: isOk ? Colors.tealAccent.shade400 : Colors.amber.shade700,
+              color: statusColor,
             ),
           ),
         ],
