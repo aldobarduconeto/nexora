@@ -62,8 +62,12 @@ Convites de sessão têm validade de aproximadamente dez minutos. Mantenha os re
 ### Grupos e comunidades
 
 - Para criar um grupo, abra **Criar grupo em malha P2P**, dê um nome ao grupo e selecione os participantes. Compartilhe o convite assinado. Os convidados usam **Entrar em grupo** para importar o código.
+- Nos chats de grupo, abra **Participantes do grupo** para consultar o estado da conexão. Ao iniciar uma chamada de voz ou vídeo, escolha quais participantes conectados deseja chamar.
 - Na área **Comunidades**, crie uma comunidade ou use **Entrar em comunidade ou grupo P2P** para importar um convite. A comunidade organiza conversas em canais e oferece informações, descrição e regras.
 - Na barra de canais, selecione um tópico ou abra a opção de criar um canal. As opções da comunidade incluem editar detalhes, convidar membros, silenciar e gerenciar canais e históricos locais.
+- Em **Salas de voz**, veja quem está em cada sala e entre com o microfone silenciado. A sala conecta os membros que escolheram entrar nela e permite continuar navegando pelos canais de texto.
+- Use **+** para criar uma sala de texto e o lápis para renomear a sala selecionada. Em **Salas de voz**, use **Nova sala de áudio** para criar uma sala ou o lápis ao lado do nome para renomeá-la.
+- Use o sino na barra de canais para silenciar as notificações do canal selecionado.
 - Use **Criar enquete** no compositor para publicar uma pergunta com opções de voto. A atualização para os outros membros depende das conexões entre os pares.
 
 O convite importa os dados do grupo ou da comunidade. A comunicação ainda depende das sessões WebRTC entre os participantes. Em grupos, cada conexão consome recursos do aparelho e da rede. A disponibilidade dos pares afeta quem recebe conteúdo em tempo real.

@@ -158,6 +158,7 @@ class P2PMediaSession {
   P2PCallState _state = P2PCallState.idle;
   String? _callId;
   String? _pendingOfferSdp;
+  String? voiceRoom;
   bool _isVideoCall = false;
   bool _isAudioMuted = false;
   bool _isVideoEnabled = false;
@@ -492,6 +493,8 @@ class P2PMediaSession {
     bool screenShare = false,
     DesktopCapturerSource? screenSource,
     VideoStreamPreset? preset,
+    String? room,
+    bool initiallyMuted = false,
   }) async {
     if (_state != P2PCallState.idle) {
       throw StateError('Já existe uma chamada ou transmissão em andamento.');
@@ -502,9 +505,10 @@ class P2PMediaSession {
     }
     final callId = _uuid.v4();
     _callId = callId;
+    voiceRoom = room;
     _isVideoCall = video || screenShare;
     _isScreenSharing = screenShare;
-    _isAudioMuted = !audio;
+    _isAudioMuted = !audio || initiallyMuted;
     _isRemoteAudioMuted = false;
     _isRemoteVideoEnabled = false;
     _isRemoteScreenSharing = false;
@@ -530,12 +534,18 @@ class P2PMediaSession {
           preset: _currentPreset,
         );
         _localStream = stream;
+        if (initiallyMuted) {
+          _isAudioMuted = true;
+          for (final track in stream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+            track.enabled = false;
+          }
+        }
         await _attachStreamTracks(pc, stream);
       }
 
       final offer = await pc.createOffer({
         'offerToReceiveAudio': 1,
-        'offerToReceiveVideo': 1,
+        'offerToReceiveVideo': room == null ? 1 : 0,
       });
       await pc.setLocalDescription(offer);
       final localDesc = await pc.getLocalDescription() ?? offer;
@@ -543,7 +553,8 @@ class P2PMediaSession {
         throw StateError('Não foi possível preparar a sessão de mídia P2P.');
       }
       await sendSignal({
-        'type': 'offer',
+        'type': room == null ? 'offer' : 'voice_room_offer',
+        if (room != null) 'room': room,
         'callId': callId,
         'video': _isVideoCall,
         'audioMuted': _isAudioMuted,
@@ -564,6 +575,7 @@ class P2PMediaSession {
     bool withAudio = true,
     bool? withVideo,
     VideoStreamPreset? preset,
+    bool initiallyMuted = false,
   }) async {
     final offerSdp = _pendingOfferSdp;
     final callId = _callId;
@@ -584,6 +596,12 @@ class P2PMediaSession {
         preset: _currentPreset,
       );
       _localStream = stream;
+      if (initiallyMuted) {
+        _isAudioMuted = true;
+        for (final track in stream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+          track.enabled = false;
+        }
+      }
       if (wantVideo && _isVideoEnabled) _isVideoCall = true;
 
       await pc.setRemoteDescription(RTCSessionDescription(offerSdp, 'offer'));
@@ -594,7 +612,7 @@ class P2PMediaSession {
 
       final answer = await pc.createAnswer({
         'offerToReceiveAudio': 1,
-        'offerToReceiveVideo': 1,
+        'offerToReceiveVideo': voiceRoom == null ? 1 : 0,
       });
       await pc.setLocalDescription(answer);
       final localDesc = await pc.getLocalDescription() ?? answer;
@@ -967,6 +985,7 @@ class P2PMediaSession {
 
     switch (type) {
       case 'offer':
+      case 'voice_room_offer':
         if (_state != P2PCallState.idle) {
           await sendSignal({'type': 'busy', 'callId': callId});
           return;
@@ -974,6 +993,7 @@ class P2PMediaSession {
         final sdp = data['sdp'] as String?;
         if (sdp == null || sdp.isEmpty) return;
         _callId = callId;
+        voiceRoom = type == 'voice_room_offer' ? data['room'] as String : null;
         _pendingOfferSdp = sdp;
         _isVideoCall = data['video'] == true;
         _isRemoteVideoEnabled = data['videoEnabled'] == true;
@@ -1134,6 +1154,7 @@ class P2PMediaSession {
     _remoteDescriptionSet = false;
     _pendingOfferSdp = null;
     _callId = null;
+    voiceRoom = null;
     _connectedAt = null;
     _isAudioMuted = false;
     _isVideoEnabled = false;

@@ -4,11 +4,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexora/src/models/conversation.dart';
+import 'package:nexora/src/models/community_room.dart' show CommunityRoomChange;
 import 'package:nexora/src/models/message.dart' as stored;
+import 'package:nexora/src/models/protected_content.dart';
 import 'package:nexora/src/models/scheduled_message.dart';
 import 'package:nexora/src/services/background_connection_service.dart';
 import 'package:nexora/src/services/conversation_connection_service.dart';
 import 'package:nexora/src/services/conversation_tabs_service.dart';
+import 'package:nexora/src/services/file_transfer_service.dart';
 import 'package:nexora/src/services/group_invitation_service.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/message_service.dart';
@@ -21,12 +24,14 @@ import 'package:nexora/src/views/widgets/app_theme.dart';
 import 'package:nexora/src/views/widgets/call_panel.dart';
 import 'package:nexora/src/views/widgets/chat_wallpaper.dart';
 import 'package:nexora/src/views/widgets/community_channels_bar.dart';
+import 'package:nexora/src/views/widgets/community_room_editor.dart';
 import 'package:nexora/src/views/widgets/confirmation_dialog.dart';
 import 'package:nexora/src/views/widgets/connection_assistant_card.dart';
 import 'package:nexora/src/views/widgets/crypto_avatar.dart';
 import 'package:nexora/src/views/widgets/message_reactions_view.dart';
 import 'package:nexora/src/views/widgets/pinned_messages_bar.dart';
 import 'package:nexora/src/views/widgets/poll_widget.dart';
+import 'package:nexora/src/views/widgets/protected_content_bubble.dart';
 import 'package:nexora/src/views/widgets/reply_snippet_widget.dart';
 import 'package:nexora/src/views/widgets/safety_numbers_dialog.dart';
 import 'package:nexora/src/views/widgets/security_hud.dart';
@@ -67,6 +72,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
   DecryptedMessage? _replyingTo;
   String _activeChannel = 'geral';
   bool _viewOnceMode = false;
+  ContentWarning? _contentWarning;
   int? _ephemeralTimerSeconds;
   DateTime? _lastCommunitySentAt;
 
@@ -77,8 +83,10 @@ class _P2PChatPageState extends State<P2PChatPage> {
   final _historyDeletions = <String, DecryptedMessage>{};
   List<DecryptedMessage>? _pinnedMessages;
   List<DecryptedMessage>? _filteredMessages;
+  List<CommunityRoomChange>? _seenRoomChanges;
   (String, String?)? _messageFilter;
   bool _scrollPending = false;
+  ProtectedTransfer? _latestProtected;
   late final ConversationConnectionService _connection;
   final ScrollController _scrollController = ScrollController();
   late final StreamSubscription<DecryptedMessage> _messageSubscription;
@@ -91,6 +99,15 @@ class _P2PChatPageState extends State<P2PChatPage> {
       : (widget.conversation.isGroup
           ? _connection.peerKeys.any(_user.isBlocked)
           : _user.isBlocked(_connection.remotePublicKey));
+
+  String? get _sendChannel =>
+      widget.conversation.isCommunity || widget.conversation.channels.isNotEmpty
+      ? _activeChannel
+      : null;
+
+  Conversation? get _currentConversation => _user.conversations
+      .where((item) => item.id == widget.conversation.id)
+      .firstOrNull;
 
   @override
   void initState() {
@@ -118,9 +135,10 @@ class _P2PChatPageState extends State<P2PChatPage> {
       connectionTimeoutSeconds: _settings.settings.connectionTimeoutSeconds,
       localUserId: _user.currentUser.id,
       historySnapshot: () => _historyRecords,
-      currentConversation: () => _user.conversations
-          .where((conversation) => conversation.id == widget.conversation.id)
-          .firstOrNull,
+      currentConversation: () => _currentConversation,
+      onRoomChange: (change) => _user.applyCommunityRoomChange(
+        widget.conversation.id, change,
+      ),
       onNotice: (text) {
         if (mounted) {
           ScaffoldMessenger.of(
@@ -304,7 +322,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
     return _filteredMessages ??= [
       for (final message in _messages)
         if ((channel == null ||
-                (message.channel ?? 'geral').toLowerCase() == channel) &&
+                _textChannelFor(message.channel) == channel) &&
             (_query.isEmpty || message.content.toLowerCase().contains(_query)))
           message,
     ];
@@ -319,6 +337,18 @@ class _P2PChatPageState extends State<P2PChatPage> {
       unawaited(_connection.abortFiles());
     }
     if (mounted) {
+      final latest = _connection.protectedTransfers.lastOrNull?.key;
+      if (latest != null && !identical(_latestProtected, latest)) {
+        if (!_scrollController.hasClients ||
+            _scrollController.position.extentAfter <= 96 ||
+            latest.outgoing) {
+          _scrollToLatest();
+        }
+        if (widget.isTabMode && !latest.outgoing) {
+          ConversationTabsService.instance.incrementTabUnread(widget.conversation.id);
+        }
+      }
+      _latestProtected = latest;
       setState(() {
         if (_connection.isConnected) _showConnection = false;
       });
@@ -374,7 +404,25 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
   void _contactChanged() {
     if (!mounted) return;
-    setState(() {});
+    _connection.refreshVoiceMembership();
+    final current = _currentConversation;
+    final resolved = current?.resolveTextChannel(_activeChannel);
+    setState(() {
+      if (resolved != null) _activeChannel = resolved;
+      if (current != null && !identical(_seenRoomChanges, current.roomChanges)) {
+        _seenRoomChanges = current.roomChanges;
+        for (var index = 0; index < _messages.length; index++) {
+          final message = _messages[index];
+          final room = message.channel ?? 'geral';
+          final activeName = current.resolveTextChannel(room);
+          if (activeName != null && activeName != room) {
+            _messages[index] = message.copyWith(channel: activeName);
+          }
+        }
+        _pinnedMessages = null;
+      }
+      _filteredMessages = null;
+    });
     if (_wasBlocked == _isBlocked) return;
     _wasBlocked = _isBlocked;
     setState(() {});
@@ -386,6 +434,10 @@ class _P2PChatPageState extends State<P2PChatPage> {
       unawaited(_runConnectionAction(_connection.disconnect));
     }
   }
+
+  String _textChannelFor(String? channel) =>
+      (_currentConversation?.resolveTextChannel(channel ?? 'geral') ??
+          channel ?? 'geral').toLowerCase();
 
   Future<void> _blockContact() async {
     final confirmed = await confirmAction(
@@ -439,7 +491,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
               reactions: m.reactions,
               isPinned: m.isPinned,
               isStarred: m.isStarred,
-              channel: m.channel,
+              channel: m.channel == null ? null : _textChannelFor(m.channel),
               pollQuestion: m.pollQuestion,
               pollOptions: m.pollOptions,
               pollVotes: m.pollVotes,
@@ -474,6 +526,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
       _signalingController.clear();
     });
     await _persistHistory();
+    await _connection.clearProtectedTransfers();
   }
 
   Future<void> _confirmClear() async {
@@ -568,6 +621,11 @@ class _P2PChatPageState extends State<P2PChatPage> {
   Future<void> _startCall({required bool video}) async {
     if (!_connection.canStartCall || _busy || _isBlocked) return;
     try {
+      Set<String>? targets;
+      if (_isGroupChat) {
+        targets = await _showGroupMembers(pickForCall: true);
+        if (targets == null || !mounted) return;
+      }
       final perm = PermissionService.instance.state;
       if (!perm.microphone || (video && !perm.camera)) {
         final updated = await PermissionService.instance.requestPermissions();
@@ -578,6 +636,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
           return;
         }
       }
+      if (!mounted) return;
       VideoStreamPreset? preset;
       if (video) {
         preset = await pickVideoStreamPreset(
@@ -590,14 +649,230 @@ class _P2PChatPageState extends State<P2PChatPage> {
         );
         if (preset == null) return;
       }
-      await _connection.startCall(video: video, preset: preset);
+      if (!mounted) return;
+      await _connection.startCall(
+        video: video,
+        preset: preset,
+        targetPeers: targets,
+      );
+    } on Object catch (error) {
+      if (mounted) _showError(error);
+    }
+  }
+
+  bool get _isGroupChat =>
+      widget.conversation.isGroup && !widget.conversation.isCommunity;
+
+  Future<Set<String>?> _showGroupMembers({bool pickForCall = false}) {
+    final peers = _connection.peerKeys;
+    final selected = peers.where(_connection.peerConnected).toSet();
+    return showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => ListenableBuilder(
+          listenable: _connection,
+          builder: (context, _) {
+            final reachable = selected.where(_connection.peerConnected).toSet();
+            return AlertDialog(
+              title: Text(pickForCall ? 'Quem você quer chamar?' : 'Participantes do grupo'),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!pickForCall)
+                        const ListTile(
+                          leading: Icon(Icons.person_outline_rounded),
+                          title: Text('Você'),
+                          subtitle: Text('Neste dispositivo'),
+                        ),
+                      for (final key in peers)
+                        if (pickForCall)
+                          CheckboxListTile(
+                            title: Text(_user.contactName(key)),
+                            subtitle: Text(_connection.peerConnected(key)
+                                ? 'Conectado' : 'Desconectado'),
+                            value: reachable.contains(key),
+                            onChanged: !_connection.peerConnected(key) ? null
+                                : (checked) => update(() {
+                                    if (checked == true) {
+                                      selected.add(key);
+                                    } else {
+                                      selected.remove(key);
+                                    }
+                                  }),
+                          )
+                        else
+                          ListTile(
+                            leading: Icon(_connection.peerConnected(key)
+                                ? Icons.link_rounded : Icons.link_off_rounded),
+                            title: Text(_user.contactName(key)),
+                            subtitle: Text(_connection.peerConnected(key)
+                                ? 'Conectado' : 'Desconectado'),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(pickForCall ? 'Cancelar' : 'Fechar'),
+                ),
+                if (pickForCall)
+                  FilledButton(
+                    onPressed: reachable.isEmpty ? null
+                        : () => Navigator.of(dialogContext).pop(reachable),
+                    child: const Text('Chamar selecionados'),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showVoiceRooms() async {
+    final room = await showDialog<CommunityVoiceRoom>(
+      context: context,
+      builder: (dialogContext) => ListenableBuilder(
+        listenable: _connection,
+        builder: (context, _) => AlertDialog(
+          title: const Text('Salas de voz'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final room in (_currentConversation ?? widget.conversation).voiceRooms)
+                    ListTile(
+                      leading: const Icon(Icons.headset_mic_outlined),
+                      title: Text(room.label),
+                      subtitle: Text(
+                        _voiceRoomMembersLabel(room),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: _connection.voiceRoom == room,
+                      trailing: IconButton(
+                        tooltip: 'Renomear sala de áudio',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: _isBlocked ? null : () => _editVoiceRoom(context, room),
+                      ),
+                      onTap: _connection.voiceRoom != null ||
+                          _connection.isInCall || _isBlocked
+                          ? null : () => Navigator.of(dialogContext).pop(room),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: _isBlocked ? null : () => _editVoiceRoom(context),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Nova sala de áudio'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (room == null || !mounted || _isBlocked) return;
+    try {
+      final permissions = PermissionService.instance;
+      if (!permissions.state.microphone) {
+        final result = await permissions.requestPermissions();
+        if (!mounted) return;
+        if (!result.microphone) {
+          _showError('Permita o uso do microfone para entrar na sala de voz.');
+          return;
+        }
+      }
+      if (!_isBlocked) _connection.joinVoiceRoom(room);
+    } on Object catch (error) {
+      if (mounted) _showError(error);
+    }
+  }
+
+  Future<void> _editVoiceRoom(BuildContext context, [CommunityVoiceRoom? room]) async {
+    await showCommunityRoomEditor(
+      context,
+      voice: true,
+      initialName: room?.label,
+      save: (name) => _user.editCommunityVoiceRoom(
+        widget.conversation.id, name, roomId: room?.name,
+      ),
+    );
+  }
+
+  String _voiceRoomMembersLabel(CommunityVoiceRoom room) {
+    final names = _connection.voiceMembers(room).map((key) {
+      if (key == _user.currentUser.id) return 'Você';
+      final name = _user.contactName(key);
+      if (_connection.voiceRoom == room && !_connection.voicePeerActive(key)) {
+        return '$name (áudio pendente)';
+      }
+      return name;
+    }).toList();
+    return names.isEmpty ? 'Sala vazia' : names.join(', ');
+  }
+
+  Widget _buildVoiceRoomBar() {
+    final room = _connection.voiceRoom;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        children: [
+          OutlinedButton.icon(
+            onPressed: _isBlocked ? null : _showVoiceRooms,
+            icon: const Icon(Icons.headset_mic_outlined, size: 18),
+            label: const Text('Salas de voz'),
+          ),
+          const SizedBox(width: 8),
+          if (room == null)
+            const Spacer()
+          else ...[
+            Expanded(
+              child: Text(
+                '${room.label} · ${_connection.voiceMembers(room).length} na sala',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              onPressed: () => _runChatAction(_connection.toggleVoiceRoomMute),
+              tooltip: _connection.voiceMuted ? 'Ativar microfone' : 'Silenciar microfone',
+              icon: Icon(_connection.voiceMuted ? Icons.mic_off_outlined : Icons.mic_outlined),
+            ),
+            IconButton(
+              onPressed: () => _runChatAction(_connection.leaveVoiceRoom),
+              tooltip: 'Sair da sala de voz',
+              icon: const Icon(Icons.call_end_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runChatAction(Future<void> Function() action) async {
+    try {
+      await action();
     } on Object catch (error) {
       if (mounted) _showError(error);
     }
   }
 
   Future<void> _startOrToggleScreenShare() async {
-    if (_busy || _isBlocked || !_connection.hasConnectedPeers) return;
+    if (_busy || _isBlocked || !_connection.hasConnectedPeers ||
+        _connection.voiceRoom != null || _connection.hasVoiceRoomCall) return;
     try {
       if (_connection.isInCall) {
         if (_connection.isScreenSharing) {
@@ -643,19 +918,25 @@ class _P2PChatPageState extends State<P2PChatPage> {
     if (_sendingFile || _busy || _isBlocked || !_connection.hasConnectedPeers) {
       return;
     }
+    final warning = _contentWarning;
+    final channel = _sendChannel;
     final proceed = await confirmAction(
       context,
       title: widget.conversation.isGroup
           ? 'Enviar arquivo ao grupo'
           : 'Enviar arquivo',
-      description:
-          'Recomendamos enviar apenas arquivos .safe para ajudar a preservar sua privacidade. Qualquer formato é aceito, sem limite de tamanho imposto pelo app; o envio depende do espaço disponível e da conexão. Cada destinatário conectado escolherá onde salvar.',
+      description: warning == null
+          ? 'Recomendamos enviar apenas arquivos .safe para ajudar a preservar sua privacidade. Qualquer formato é aceito, sem limite de tamanho imposto pelo app; o envio depende do espaço disponível e da conexão. Cada destinatário conectado escolherá onde salvar.'
+          : 'O arquivo receberá a marcação ${warning.label}. Cada destinatário precisará aceitar o download.',
       action: 'Escolher arquivo',
     );
     if (proceed != true || !mounted) return;
     setState(() => _sendingFile = true);
     try {
-      await _connection.pickAndSendFile();
+      final sent = await _connection.pickAndSendFile(warning: warning, channel: channel);
+      if (sent && mounted && warning != null && _contentWarning == warning) {
+        setState(() => _contentWarning = null);
+      }
     } on Object catch (error) {
       if (mounted) _showError(error);
     } finally {
@@ -692,8 +973,8 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
     setState(() => _sending = true);
     final reply = _replyingTo;
-    final isComm = widget.conversation.isCommunity || widget.conversation.channels.isNotEmpty;
-    final ch = isComm ? _activeChannel : null;
+    final ch = _sendChannel;
+    final warning = _contentWarning;
     final isViewOnce = _viewOnceMode;
     final ephSeconds = _ephemeralTimerSeconds;
 
@@ -704,21 +985,26 @@ class _P2PChatPageState extends State<P2PChatPage> {
               : _user.contactName(reply.senderId))
           : null;
 
-      await _dispatchTextMessage(
-        text: text,
-        replyToId: reply?.id,
-        replySnippet: reply?.content,
-        replySender: replySender,
-        channel: ch,
-        isViewOnce: isViewOnce,
-        ephemeralSeconds: ephSeconds,
-      );
+      if (warning != null) {
+        _connection.sendProtectedText(text: text, warning: warning, channel: ch);
+      } else {
+        await _dispatchTextMessage(
+          text: text,
+          replyToId: reply?.id,
+          replySnippet: reply?.content,
+          replySender: replySender,
+          channel: ch,
+          isViewOnce: isViewOnce,
+          ephemeralSeconds: ephSeconds,
+        );
+      }
 
       if (mounted) {
         _messageController.clear();
         setState(() {
           _replyingTo = null;
           _viewOnceMode = false;
+          if (_contentWarning == warning) _contentWarning = null;
         });
       }
     } on Object catch (error) {
@@ -1434,7 +1720,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
               ListTile(
                 leading: const Icon(Icons.reply_rounded),
                 title: const Text('Responder'),
-                onTap: () {
+                onTap: _contentWarning != null ? null : () {
                   Navigator.pop(sheetCtx);
                   setState(() => _replyingTo = msg);
                 },
@@ -2091,42 +2377,17 @@ class _P2PChatPageState extends State<P2PChatPage> {
     );
   }
 
-  Future<void> _showAddChannelDialog() async {
-    final controller = TextEditingController();
-    final form = GlobalKey<FormState>();
-    final added = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Novo canal de tópico'),
-        content: Form(
-          key: form,
-          child: TextFormField(
-            controller: controller,
-            autofocus: true,
-            maxLength: 24,
-            decoration: const InputDecoration(
-              labelText: 'Nome do canal',
-              hintText: 'ex: anuncios, projetos, fotos',
-              prefixText: '#',
-            ),
-            validator: (v) => v == null || v.trim().isEmpty ? 'Informe o nome.' : null,
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) Navigator.pop(context, true);
-            },
-            child: const Text('Criar canal'),
-          ),
-        ],
-      ),
+  Future<void> _showAddChannelDialog({String? oldName}) async {
+    final name = await showCommunityRoomEditor(
+      context,
+      voice: false,
+      initialName: oldName,
+      save: (name) => oldName == null
+          ? _user.addChannelToConversation(widget.conversation.id, name)
+          : _user.renameChannelInConversation(widget.conversation.id, oldName, name),
     );
-    if (added == true && mounted) {
-      final name = controller.text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
-      await _user.addChannelToConversation(widget.conversation.id, name);
-      setState(() => _activeChannel = name);
+    if (name != null && mounted) {
+      setState(() => _activeChannel = CommunityRoomChange.normalizeName(name, voice: false));
     }
   }
 
@@ -2471,7 +2732,8 @@ class _P2PChatPageState extends State<P2PChatPage> {
             ],
           ),
           actions: [
-            if (!widget.conversation.isSavedMessages) ...[
+            if (!widget.conversation.isSavedMessages &&
+                _connection.voiceRoom == null && !_connection.hasVoiceRoomCall) ...[
               IconButton(
                 icon: const Icon(Icons.call_outlined),
                 tooltip: canCall
@@ -2544,6 +2806,8 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   unawaited(_showEphemeralTimerDialog());
                 } else if (value == 'comm_info') {
                   _showCommunityInfo();
+                } else if (value == 'group_members') {
+                  unawaited(_showGroupMembers());
                 } else if (value == 'add_channel') {
                   unawaited(_showAddChannelDialog());
                 } else if (value == 'poll') {
@@ -2553,6 +2817,16 @@ class _P2PChatPageState extends State<P2PChatPage> {
                 }
               },
               itemBuilder: (_) => [
+                if (_isGroupChat)
+                  const PopupMenuItem(
+                    value: 'group_members',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.groups_outlined),
+                      title: Text('Participantes do grupo'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 if (!widget.conversation.isGroup && !widget.conversation.isSavedMessages) ...[
                   const PopupMenuItem(
                     value: 'safety',
@@ -2673,6 +2947,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                     _messages.where((message) => message.isPinned).toList();
                 final isComm = widget.conversation.isCommunity ||
                     widget.conversation.channels.isNotEmpty;
+                final current = _currentConversation ?? widget.conversation;
                 final visible = _visibleMessages(
                   isComm ? _activeChannel.toLowerCase() : null,
                 );
@@ -2681,14 +2956,28 @@ class _P2PChatPageState extends State<P2PChatPage> {
                   children: [
                     if (isComm)
                       CommunityChannelsBar(
-                        channels: widget.conversation.channels,
+                        channels: current.channels,
                         activeChannel: _activeChannel,
                         onSelectChannel: (ch) =>
                             setState(() => _activeChannel = ch),
                         onAddChannel: _showAddChannelDialog,
                         onShowInfo: _showCommunityInfo,
+                        onRenameChannel: widget.conversation.isCommunity && !_isBlocked
+                            ? () => _showAddChannelDialog(oldName: _activeChannel)
+                            : null,
+                        activeChannelMuted: current.isChannelMuted(_activeChannel),
+                        onToggleChannelMute: widget.conversation.isCommunity
+                            ? () {
+                                final channel = _activeChannel;
+                                unawaited(_runChatAction(() =>
+                                    _user.toggleCommunityChannelMute(
+                                        widget.conversation.id, channel)));
+                              }
+                            : null,
                       ),
-                    if (_connection.isInCall && !widget.conversation.isSavedMessages)
+                    if (widget.conversation.isCommunity) _buildVoiceRoomBar(),
+                    if (_connection.isInCall && !widget.conversation.isSavedMessages &&
+                        !_connection.hasVoiceRoomCall && _connection.voiceRoom == null)
                       CallPanel(
                         connection: _connection,
                         peerName: _user.contactName(_connection.callPeerKey),
@@ -2787,9 +3076,32 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
   Widget _buildMessages(
     BoxConstraints constraints,
-    List<DecryptedMessage> visible,
+    List<DecryptedMessage> messages,
   ) {
     final colors = Theme.of(context).colorScheme;
+    final protectedById = <String, MapEntry<ProtectedTransfer, String>>{};
+    var visible = messages;
+    if (!_isBlocked && _query.isEmpty && _connection.protectedTransfers.isNotEmpty) {
+      visible = [...messages];
+      final channel = _sendChannel?.toLowerCase();
+      for (final entry in _connection.protectedTransfers) {
+        final transfer = entry.key;
+        if (channel != null &&
+            _textChannelFor(transfer.channel) != channel) {
+          continue;
+        }
+        final id = 'protected-${entry.value}-${transfer.outgoing}-${transfer.id}';
+        protectedById[id] = entry;
+        visible.add(DecryptedMessage(
+          id: id,
+          conversationId: widget.conversation.id,
+          senderId: transfer.outgoing ? _user.currentUser.id : entry.value,
+          content: '',
+          sentAt: transfer.sentAt,
+        ));
+      }
+      visible.sort((left, right) => left.sentAt.compareTo(right.sentAt));
+    }
     if (visible.isEmpty) {
       return Center(
         child: SingleChildScrollView(
@@ -2871,6 +3183,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
       itemBuilder: (context, index) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final message = visible[index];
+        final protected = protectedById[message.id];
         final local = message.senderId == _user.currentUser.id;
         final time = message.sentAt.toLocal();
         final prevTime = index > 0 ? visible[index - 1].sentAt.toLocal() : null;
@@ -2931,7 +3244,9 @@ class _P2PChatPageState extends State<P2PChatPage> {
             Align(
               alignment: local ? Alignment.centerRight : Alignment.centerLeft,
               child: GestureDetector(
-                onLongPress: () => _showMessageActions(message),
+                onLongPress: protected == null
+                    ? () => _showMessageActions(message)
+                    : null,
                 child: Container(
                   constraints: BoxConstraints(
                     maxWidth: (constraints.maxWidth * .80)
@@ -2987,7 +3302,20 @@ class _P2PChatPageState extends State<P2PChatPage> {
                             isEmbedded: true,
                           ),
                         ),
-                      if (message.isViewOnce)
+                      if (protected != null) ...[
+                        if (widget.conversation.isGroup && local)
+                          Text('Para ${_user.contactName(protected.value)}'),
+                        ProtectedContentBubble(
+                          key: ObjectKey(protected.key),
+                          transfer: protected.key,
+                          stealthMode: _settings.settings.stealthMode,
+                          onDecision: (accept) {
+                            if (!_isBlocked) {
+                              _connection.decideProtected(protected.key, accept: accept);
+                            }
+                          },
+                        ),
+                      ] else if (message.isViewOnce)
                         ViewOnceBubble(
                           content: message.content,
                           isLocal: local,
@@ -3112,6 +3440,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
     final canSend = (widget.conversation.isSavedMessages || _connection.canSend) &&
         !_busy &&
         !_isBlocked;
+    final warning = _contentWarning;
 
     return Container(
       decoration: BoxDecoration(
@@ -3124,6 +3453,19 @@ class _P2PChatPageState extends State<P2PChatPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildScheduledMessagesBar(),
+          if (warning != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: InputChip(
+                  avatar: const Icon(Icons.visibility_off_outlined, size: 16),
+                  label: Text('${warning.label} · próximo texto ou anexo'),
+                  onDeleted: () => setState(() => _contentWarning = null),
+                  deleteButtonTooltipMessage: 'Remover marcação de conteúdo',
+                ),
+              ),
+            ),
           if (_viewOnceMode)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -3200,11 +3542,28 @@ class _P2PChatPageState extends State<P2PChatPage> {
                           ],
                         ),
                       ),
+                    if (!widget.conversation.isSavedMessages)
+                      for (final option in ContentWarning.values)
+                        CheckedPopupMenuItem(
+                          checked: warning == option,
+                          enabled: !_sending && !_sendingFile,
+                          value: () => setState(() {
+                            _contentWarning = warning == option ? null : option;
+                            if (_contentWarning != null) {
+                              _viewOnceMode = false;
+                              _replyingTo = null;
+                            }
+                          }),
+                          child: Text('Marcar como ${option.label}'),
+                        ),
                     if (!widget.conversation.isGroup &&
                         !widget.conversation.isSavedMessages)
                       CheckedPopupMenuItem(
                         checked: _viewOnceMode,
-                        value: () => setState(() => _viewOnceMode = !_viewOnceMode),
+                        value: () => setState(() {
+                          _viewOnceMode = !_viewOnceMode;
+                          if (_viewOnceMode) _contentWarning = null;
+                        }),
                         child: const Row(
                           children: [
                             Icon(Icons.local_fire_department_rounded, size: 18, color: Colors.amber),
@@ -3226,7 +3585,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                         ),
                       ),
                     PopupMenuItem(
-                      enabled: canSend && !_sending,
+                      enabled: canSend && !_sending && warning == null,
                       value: _sendVoiceMemo,
                       child: const Row(
                         children: [
@@ -3237,7 +3596,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                       ),
                     ),
                     PopupMenuItem(
-                      enabled: canSend,
+                      enabled: canSend && warning == null,
                       value: _showScheduleSendDialog,
                       child: const Row(
                         children: [

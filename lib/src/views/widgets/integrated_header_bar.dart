@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexora/src/services/conversation_tabs_service.dart';
@@ -34,12 +37,26 @@ class IntegratedHeaderBar extends StatefulWidget implements PreferredSizeWidget 
   Size get preferredSize => const Size.fromHeight(42);
 }
 
-class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
+typedef _CaptionArea = ({double width, double height, double left, double right});
+
+class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
+    with WidgetsBindingObserver {
+  static const _captionChannel = MethodChannel('nexora/desktop_caption');
   final _tabsService = ConversationTabsService.instance;
   final _windowService = WindowService.instance;
   final _settingsService = SettingsService.instance;
   final _localData = LocalDataService.instance;
   final ScrollController _tabsScrollController = ScrollController();
+  Animation<double>? _secondaryAnimation;
+  _CaptionArea? _captionArea;
+  bool _captionUpdateScheduled = false;
+  bool _captionRequested = false;
+  bool _darkCaption = false;
+  double _topInset = 0;
+  int _captionRequest = 0;
+
+  bool get _supportsAndroidCaption =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void initState() {
@@ -48,13 +65,96 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
     _settingsService.addListener(_refresh);
     _localData.addListener(_refresh);
     _windowService.addListener(_refresh);
+    if (_supportsAndroidCaption) WidgetsBinding.instance.addObserver(this);
     if (_windowService.isDesktop) {
       _windowService.checkIsMaximized();
     }
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_supportsAndroidCaption) return;
+
+    final animation = ModalRoute.of(context)?.secondaryAnimation;
+    if (_secondaryAnimation != animation) {
+      _secondaryAnimation?.removeStatusListener(_onRouteTransition);
+      _secondaryAnimation = animation;
+      animation?.addStatusListener(_onRouteTransition);
+    }
+    _darkCaption = Theme.of(context).brightness == Brightness.dark;
+    _topInset = MediaQuery.paddingOf(context).top;
+    _scheduleCaptionUpdate();
+  }
+
+  @override
+  void didUpdateWidget(covariant IntegratedHeaderBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.minimal != widget.minimal) _scheduleCaptionUpdate();
+  }
+
+  @override
+  void didChangeMetrics() => _scheduleCaptionUpdate();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scheduleCaptionUpdate();
+  }
+
+  void _onRouteTransition(AnimationStatus status) => _scheduleCaptionUpdate();
+
+  void _scheduleCaptionUpdate() {
+    if (!_supportsAndroidCaption || _captionUpdateScheduled) return;
+    _captionUpdateScheduled = true;
+    final binding = WidgetsBinding.instance;
+    binding.addPostFrameCallback((_) {
+      _captionUpdateScheduled = false;
+      if (mounted) _updateCaption();
+    });
+    binding.ensureVisualUpdate();
+  }
+
+  Future<Map<String, double>?> _configureCaption({required bool enabled}) async {
+    try {
+      return await _captionChannel.invokeMapMethod<String, double>('update', {
+        'enabled': enabled,
+        'dark': _darkCaption,
+        'topInset': _topInset,
+        'minimumWidth': widget.minimal ? 240 : 600,
+      });
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  Future<void> _updateCaption() async {
+    final request = ++_captionRequest;
+    final enabled = _secondaryAnimation?.isDismissed ?? true;
+    if (!enabled && !_captionRequested) return;
+    _captionRequested = enabled;
+    final result = await _configureCaption(enabled: enabled);
+    if (!mounted || request != _captionRequest) return;
+
+    final area = result == null
+        ? null
+        : (
+            width: result['width']!,
+            height: result['height']!,
+            left: result['left']!,
+            right: result['right']!,
+          );
+    if (_captionArea != area) setState(() => _captionArea = area);
+  }
+
+  @override
   void dispose() {
+    if (_supportsAndroidCaption) {
+      WidgetsBinding.instance.removeObserver(this);
+      _secondaryAnimation?.removeStatusListener(_onRouteTransition);
+      if (_captionRequested) _configureCaption(enabled: false);
+    }
     _tabsService.removeListener(_refresh);
     _settingsService.removeListener(_refresh);
     _localData.removeListener(_refresh);
@@ -282,10 +382,16 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
 
     final topPadding = MediaQuery.paddingOf(context).top;
     final screenWidth = MediaQuery.sizeOf(context).width;
+    final caption = _captionArea;
+    final useCaption = caption != null &&
+        (caption.width - screenWidth).abs() < 1 &&
+        (caption.height - topPadding).abs() < 1;
     final isMobile = !isDesktop && screenWidth < 600;
     final hasSubBar = isMobile && !widget.minimal;
     final barHeight = 42.0 + (hasSubBar ? 38.0 : 0.0);
-    final totalHeight = barHeight + (isDesktop ? 0.0 : topPadding);
+    final totalHeight = useCaption
+        ? math.max(barHeight, caption.height)
+        : barHeight + (isDesktop ? 0.0 : topPadding);
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -293,7 +399,9 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar> {
       onDoubleTap: isDesktop ? () => _windowService.toggleMaximize() : null,
       child: Container(
         height: totalHeight,
-        padding: EdgeInsets.only(top: isDesktop ? 0.0 : topPadding),
+        padding: useCaption
+            ? EdgeInsets.only(left: caption.left, right: caption.right)
+            : EdgeInsets.only(top: isDesktop ? 0.0 : topPadding),
         decoration: BoxDecoration(
           color: colors.surface,
           border: Border(

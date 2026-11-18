@@ -59,6 +59,22 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val caption = DesktopCaption(window)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexora/desktop_caption")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "update") {
+                    result.notImplemented()
+                } else {
+                    result.success(
+                        caption.update(
+                            enabled = call.argument<Boolean>("enabled") == true,
+                            dark = call.argument<Boolean>("dark") == true,
+                            flutterTopInset = call.argument<Double>("topInset") ?: 0.0,
+                            minimumWidth = call.argument<Int>("minimumWidth") ?: 600,
+                        )
+                    )
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nexora/background_connection")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

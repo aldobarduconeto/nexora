@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:nexora/src/models/community_room.dart';
 import 'package:nexora/src/models/message.dart';
 
 enum ConversationStatus { active, away, archived, deleted }
@@ -27,6 +28,8 @@ class Conversation {
   // Features de Comunidades & Grupos
   final bool isCommunity;
   final List<String> channels; // ex: ['geral', 'anúncios', 'mídia']
+  final List<String> mutedChannels;
+  final List<CommunityRoomChange> roomChanges;
   final String? description;
   final List<String> adminIds;
   final String? creatorId;
@@ -54,12 +57,37 @@ class Conversation {
     this.isSavedMessages = false,
     this.isCommunity = false,
     this.channels = const [],
+    this.mutedChannels = const [],
+    this.roomChanges = const [],
     this.description,
     this.adminIds = const [],
     this.creatorId,
     this.privateContactNotes,
     this.isSafetyVerified = false,
   });
+
+  bool isChannelMuted(String? channel) =>
+      isCommunity && mutedChannels.contains(resolveTextChannel(channel ?? 'geral'));
+
+  String? resolveTextChannel(String? channel) {
+    if (channel == null || !isCommunity) return channel;
+    final name = channel.toLowerCase();
+    if (channels.any((item) => item.toLowerCase() == name)) return name;
+    for (final change in roomChanges) {
+      if (!change.voice && change.aliases.contains(name) &&
+          channels.contains(change.name)) return change.name;
+    }
+    return name;
+  }
+
+  List<CommunityVoiceRoom> get voiceRooms {
+    if (!isCommunity) return const [];
+    final rooms = {for (final room in CommunityVoiceRoom.defaults) room.name: room};
+    for (final change in roomChanges.where((entry) => entry.voice)) {
+      rooms[change.id] = CommunityVoiceRoom(change.id, change.name);
+    }
+    return rooms.values.toList(growable: false);
+  }
 
   Conversation copyWith({
     String? id,
@@ -79,6 +107,8 @@ class Conversation {
     bool? isSavedMessages,
     bool? isCommunity,
     List<String>? channels,
+    List<String>? mutedChannels,
+    List<CommunityRoomChange>? roomChanges,
     String? description,
     List<String>? adminIds,
     String? creatorId,
@@ -106,6 +136,8 @@ class Conversation {
       isSavedMessages: isSavedMessages ?? this.isSavedMessages,
       isCommunity: isCommunity ?? this.isCommunity,
       channels: channels ?? this.channels,
+      mutedChannels: mutedChannels ?? this.mutedChannels,
+      roomChanges: roomChanges ?? this.roomChanges,
       description: description ?? this.description,
       adminIds: adminIds ?? this.adminIds,
       creatorId: creatorId ?? this.creatorId,
@@ -135,6 +167,9 @@ class Conversation {
       'isSavedMessages': isSavedMessages,
       'isCommunity': isCommunity,
       if (channels.isNotEmpty) 'channels': channels,
+      if (mutedChannels.isNotEmpty) 'mutedChannels': mutedChannels,
+      if (roomChanges.isNotEmpty)
+        'roomChanges': roomChanges.map((change) => change.toMap()).toList(),
       if (description != null) 'description': description,
       if (adminIds.isNotEmpty) 'adminIds': adminIds,
       if (creatorId != null) 'creatorId': creatorId,
@@ -176,6 +211,10 @@ class Conversation {
       channels: List<String>.from(
         map['channels'] as List? ?? (map['isCommunity'] == true ? ['geral'] : const []),
       ),
+      mutedChannels: List<String>.from(map['mutedChannels'] as List? ?? const []),
+      roomChanges: (map['roomChanges'] as List? ?? const [])
+          .map((change) => CommunityRoomChange.fromMap(change as Map<String, dynamic>))
+          .toList(),
       description: map['description'] as String?,
       adminIds: List<String>.from(map['adminIds'] as List? ?? const []),
       creatorId: map['creatorId'] as String?,

@@ -9,6 +9,7 @@ import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/message_service.dart';
 import 'package:nexora/src/services/p2p_media_session.dart';
 import 'package:nexora/src/services/p2p_network_configuration.dart';
+import 'package:nexora/src/utils/serial_task_queue.dart';
 import 'package:uuid/uuid.dart';
 
 export 'package:nexora/src/services/p2p_media_session.dart'
@@ -68,6 +69,10 @@ class P2PConnectionService extends ChangeNotifier {
   bool _isOfferer = false;
   bool _profileSent = false;
   late final P2PMediaSession _media;
+  final _voiceOperations = SerialTaskQueue();
+  String? Function()? selectedVoiceRoom;
+  bool Function()? voiceRoomMuted;
+  String? get voiceRoom => _media.voiceRoom;
 
   Stream<DecryptedMessage> get messages => _messageController.stream;
   P2PConnectionStatus get status => _status;
@@ -220,6 +225,25 @@ class P2PConnectionService extends ChangeNotifier {
     preset: preset,
   );
 
+  Future<void> startVoiceRoomCall(String room) => _voiceOperations.run(() async {
+    if (!isConnected || selectedVoiceRoom?.call() != room || isInCall) return;
+    await _media.startCall(
+      _requireActiveConnection(),
+      video: false,
+      room: room,
+      initiallyMuted: voiceRoomMuted?.call() ?? true,
+    );
+  });
+
+  Future<void> endVoiceRoomCall() => _voiceOperations.run(() async {
+    if (voiceRoom != null) await endCall();
+  });
+
+  Future<void> syncVoiceRoomMute() => _voiceOperations.run(() async {
+    if (voiceRoom == null || !isConnected) return;
+    if (isAudioMuted != (voiceRoomMuted?.call() ?? true)) await toggleMute();
+  });
+
   Future<void> acceptCall({
     bool withAudio = true,
     bool? withVideo,
@@ -266,6 +290,34 @@ class P2PConnectionService extends ChangeNotifier {
       final data =
           jsonDecode(content.substring(_callPrefix.length))
               as Map<String, dynamic>;
+      if (data['type'] == 'voice_room_offer') {
+        await _voiceOperations.run(() async {
+          final room = data['room'];
+          if (room is! String || selectedVoiceRoom?.call() != room ||
+              remotePublicKey.compareTo(localUserId) >= 0 ||
+              data['video'] == true || data['screenSharing'] == true ||
+              data['videoEnabled'] == true || _peerConnection != pc ||
+              LocalDataService.instance.isBlocked(remotePublicKey)) {
+            return;
+          }
+          final wasIdle = callState == P2PCallState.idle;
+          await _media.handleSignal(pc, data);
+          if (wasIdle && callState == P2PCallState.incoming && voiceRoom == room) {
+            await _media.acceptCall(
+              pc,
+              withVideo: false,
+              initiallyMuted: voiceRoomMuted?.call() ?? true,
+            );
+          }
+        });
+        return;
+      }
+      if (selectedVoiceRoom?.call() != null && data['type'] == 'offer') {
+        await _sendCallSignal({'type': 'busy', 'callId': data['callId']});
+        return;
+      }
+      if (voiceRoom != null && (data['videoEnabled'] == true ||
+          data['screenSharing'] == true || data['video'] == true)) return;
       await _media.handleSignal(pc, data);
     } catch (_) {}
   }

@@ -8,6 +8,9 @@ class CommunityChannelsBar extends StatelessWidget {
     required this.onSelectChannel,
     required this.onAddChannel,
     this.onShowInfo,
+    this.activeChannelMuted = false,
+    this.onToggleChannelMute,
+    this.onRenameChannel,
   });
 
   final List<String> channels;
@@ -15,6 +18,9 @@ class CommunityChannelsBar extends StatelessWidget {
   final ValueChanged<String> onSelectChannel;
   final VoidCallback onAddChannel;
   final VoidCallback? onShowInfo;
+  final bool activeChannelMuted;
+  final VoidCallback? onToggleChannelMute;
+  final VoidCallback? onRenameChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +74,29 @@ class CommunityChannelsBar extends StatelessWidget {
               },
             ),
           ),
+          if (onToggleChannelMute != null)
+            IconButton(
+              icon: Icon(
+                activeChannelMuted
+                    ? Icons.notifications_off_outlined
+                    : Icons.notifications_outlined,
+                size: 18,
+              ),
+              tooltip: activeChannelMuted
+                  ? 'Reativar notificações de #$activeChannel'
+                  : 'Silenciar notificações de #$activeChannel',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: onToggleChannelMute,
+            ),
+          if (onRenameChannel != null)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              tooltip: 'Renomear #$activeChannel',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: onRenameChannel,
+            ),
           IconButton(
             icon: const Icon(Icons.add_rounded, size: 19),
             tooltip: 'Criar novo canal de tópico',

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:nexora/src/models/community_room.dart';
 import 'package:nexora/src/models/conversation.dart';
 import 'package:nexora/src/models/message.dart';
 import 'package:nexora/src/models/mirrored_device.dart';
@@ -323,7 +324,7 @@ class LocalDataService extends ChangeNotifier {
             : (c.participantIds.toSet().length == c.participantIds.length &&
                 c.participantIds.contains(owner) &&
                 (c.isGroup
-                    ? c.participantIds.length >= 3
+                    ? c.isCommunity || c.participantIds.length >= 3
                     : c.participantIds.length == 2));
         if (!isValidParticipants) {
           throw const FormatException('Participantes inválidos.');
@@ -353,6 +354,8 @@ class LocalDataService extends ChangeNotifier {
     required List<String> participantIds,
     bool isGroup = false,
     String? groupId,
+    List<String>? communityChannels,
+    List<CommunityRoomChange> communityRoomChanges = const [],
   }) => _tasks.run(() async {
     if (_owner == null) {
       throw StateError('Carregue a identidade antes das conversas.');
@@ -361,7 +364,10 @@ class LocalDataService extends ChangeNotifier {
         .map(IdentityProtocol.normalize)
         .toSet()
         .toList();
-    if ((isGroup ? participants.length < 3 : participants.length != 2) ||
+    final isCommunity = communityChannels != null;
+    if ((isGroup
+            ? !isCommunity && participants.length < 3
+            : isCommunity || participants.length != 2) ||
         !participants.contains(_owner)) {
       throw ArgumentError(
         'Informe a chave de outra pessoa para uma conversa P2P.',
@@ -372,7 +378,7 @@ class LocalDataService extends ChangeNotifier {
     }
     for (final existing in _conversations) {
       if (isGroup && existing.id == groupId) {
-        if (!existing.isGroup ||
+        if (!existing.isGroup || existing.isCommunity != isCommunity ||
             existing.participantIds.length != participants.length ||
             !existing.participantIds.toSet().containsAll(participants)) {
           throw const FormatException(
@@ -394,6 +400,9 @@ class LocalDataService extends ChangeNotifier {
     final conversation = Conversation(
       id: groupId ?? const Uuid().v4(),
       isGroup: isGroup,
+      isCommunity: isCommunity,
+      channels: communityChannels ?? const [],
+      roomChanges: communityRoomChanges,
       title: isGroup ? title.trim() : '',
       participantIds: participants,
       messages: const [],
@@ -541,23 +550,152 @@ class LocalDataService extends ChangeNotifier {
     return community;
   });
 
-  Future<void> addChannelToConversation(String conversationId, String channelName) =>
+  Future<void> toggleCommunityChannelMute(String id, String channel) =>
       _tasks.run(() async {
-        final norm = channelName.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
-        if (norm.isEmpty || norm.length > 32) return;
-        final index = _conversations.indexWhere((c) => c.id == conversationId);
+        final index = _conversations.indexWhere((item) => item.id == id);
         if (index == -1) return;
-        final conv = _conversations[index];
-        final currentChannels = conv.channels.isNotEmpty ? [...conv.channels] : ['geral'];
-        if (!currentChannels.contains(norm)) {
-          currentChannels.add(norm);
-        }
+        final conversation = _conversations[index];
+        final name = channel.toLowerCase();
+        final channels = conversation.channels.isEmpty ? ['geral'] : conversation.channels;
+        if (!conversation.isCommunity ||
+            !channels.any((item) => item.toLowerCase() == name)) return;
+
+        final muted = conversation.mutedChannels.toSet();
+        if (!muted.remove(name)) muted.add(name);
         final updated = [..._conversations];
-        updated[index] = conv.copyWith(channels: currentChannels);
+        updated[index] = conversation.copyWith(mutedChannels: muted.toList());
         await _persist(updated);
         _setConversations(updated);
         notifyListeners();
       });
+
+  Future<void> addChannelToConversation(String id, String name) =>
+      _editCommunityRoom(id, name, voice: false);
+
+  Future<void> renameChannelInConversation(String id, String oldName, String newName) =>
+      _editCommunityRoom(id, newName, voice: false, existing: oldName);
+
+  Future<void> editCommunityVoiceRoom(String id, String name, {String? roomId}) =>
+      _editCommunityRoom(id, name, voice: true, existing: roomId);
+
+  Future<void> _editCommunityRoom(
+    String id,
+    String rawName, {
+    required bool voice,
+    String? existing,
+  }) => _tasks.run(() async {
+    final index = _conversations.indexWhere((item) => item.id == id);
+    if (index == -1 || !_conversations[index].isCommunity) {
+      throw StateError('Comunidade indisponível.');
+    }
+    final conversation = _conversations[index];
+    final name = CommunityRoomChange.normalizeName(rawName, voice: voice);
+    if (name.isEmpty || name.length > (voice ? 40 : 32)) {
+      throw ArgumentError('Informe um nome válido para a sala.');
+    }
+
+    final textChannels = conversation.channels.isEmpty ? ['geral'] : conversation.channels;
+    String? oldName;
+    final String roomId;
+    if (voice) {
+      final rooms = conversation.voiceRooms;
+      oldName = rooms.where((room) => room.name == existing).firstOrNull?.label;
+      if (rooms.any((room) => room.name != existing &&
+          room.label.toLowerCase() == name.toLowerCase())) {
+        throw ArgumentError('Já existe uma sala de áudio com esse nome.');
+      }
+      roomId = existing ?? 'v-'+const Uuid().v4();
+    } else {
+      oldName = textChannels.where((channel) =>
+          channel.toLowerCase() == existing?.toLowerCase()).firstOrNull;
+      if (textChannels.any((channel) => channel != oldName &&
+          channel.toLowerCase() == name)) {
+        throw ArgumentError('Já existe uma sala de texto com esse nome.');
+      }
+      final previous = conversation.roomChanges.where((change) =>
+          !change.voice && change.name == oldName?.toLowerCase()).firstOrNull;
+      final proposedId = 't:'+(oldName?.toLowerCase() ?? name);
+      roomId = previous?.id ??
+          (conversation.roomChanges.any((change) => change.id == proposedId)
+              ? 't:'+const Uuid().v4() : proposedId);
+    }
+    if (existing != null && oldName == null) {
+      throw StateError('Sala indisponível.');
+    }
+    if (name == oldName) return;
+
+    final previous = conversation.roomChanges.where((change) => change.id == roomId).firstOrNull;
+    final aliases = <String>{
+      if (!voice && oldName != null) oldName.toLowerCase(),
+      if (previous != null) ...previous.aliases,
+    }..remove(name);
+    await _saveCommunityRoom(index, CommunityRoomChange(
+      id: roomId,
+      name: name,
+      voice: voice,
+      author: _currentUser.id,
+      revision: (previous?.revision ?? 0) + 1,
+      aliases: aliases.take(100).toList(growable: false),
+    ));
+  });
+
+  Future<void> applyCommunityRoomChange(String id, CommunityRoomChange change) =>
+      _tasks.run(() async {
+        final index = _conversations.indexWhere((item) => item.id == id);
+        if (index == -1) return;
+        final conversation = _conversations[index];
+        if (!conversation.isCommunity || !conversation.participantIds.contains(change.author) ||
+            isBlocked(change.author)) return;
+        await _saveCommunityRoom(index, change);
+      });
+
+  Future<void> _saveCommunityRoom(int index, CommunityRoomChange change) async {
+    final conversation = _conversations[index];
+    final previous = conversation.roomChanges.where((entry) => entry.id == change.id).firstOrNull;
+    if (previous != null && !change.replaces(previous)) return;
+    final changes = [
+      for (final entry in conversation.roomChanges)
+        entry.id == change.id ? change : entry,
+      if (previous == null) change,
+    ];
+    var updatedConversation = conversation.copyWith(roomChanges: changes);
+    if (!change.voice) {
+      final channels = conversation.channels.isEmpty ? ['geral'] : conversation.channels;
+      final oldName = previous?.name ??
+          change.aliases.where((alias) => channels.any(
+            (channel) => channel.toLowerCase() == alias,
+          )).firstOrNull;
+      final oldIndex = channels.indexWhere((channel) => channel.toLowerCase() == oldName);
+      final newIndex = channels.indexWhere((channel) => channel.toLowerCase() == change.name);
+      if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex) return;
+      final nextChannels = [...channels];
+      if (oldIndex >= 0) {
+        nextChannels[oldIndex] = change.name;
+      } else if (newIndex < 0) {
+        nextChannels.add(change.name);
+      }
+      updatedConversation = updatedConversation.copyWith(
+        channels: nextChannels,
+        mutedChannels: {
+          for (final channel in conversation.mutedChannels)
+            channel == oldName ? change.name : channel,
+        }.toList(),
+        messages: [
+          for (final message in conversation.messages)
+            if (oldName != null &&
+                (message.channel ?? 'geral').toLowerCase() == oldName)
+              message.copyWith(channel: change.name)
+            else
+              message,
+        ],
+      );
+    }
+    final updated = [..._conversations];
+    updated[index] = updatedConversation;
+    await _persist(updated);
+    _setConversations(updated);
+    notifyListeners();
+  }
 
   Future<void> removeChannelFromConversation(String conversationId, String channelName) =>
       _tasks.run(() async {
@@ -571,36 +709,9 @@ class LocalDataService extends ChangeNotifier {
         }
         currentChannels.removeWhere((c) => c.toLowerCase() == norm);
         final updated = [..._conversations];
-        updated[index] = conv.copyWith(channels: currentChannels);
-        await _persist(updated);
-        _setConversations(updated);
-        notifyListeners();
-      });
-
-  Future<void> renameChannelInConversation(String conversationId, String oldChannel, String newChannel) =>
-      _tasks.run(() async {
-        final oldNorm = oldChannel.trim().toLowerCase();
-        final newNorm = newChannel.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-');
-        if (newNorm.isEmpty || newNorm.length > 32) return;
-        final index = _conversations.indexWhere((c) => c.id == conversationId);
-        if (index == -1) return;
-        final conv = _conversations[index];
-        final currentChannels = conv.channels.isNotEmpty ? [...conv.channels] : ['geral'];
-        final chIndex = currentChannels.indexWhere((c) => c.toLowerCase() == oldNorm);
-        if (chIndex == -1) return;
-        currentChannels[chIndex] = newNorm;
-
-        final updatedMessages = conv.messages.map((m) {
-          if (m.channel?.toLowerCase() == oldNorm) {
-            return m.copyWith(channel: newNorm);
-          }
-          return m;
-        }).toList();
-
-        final updated = [..._conversations];
         updated[index] = conv.copyWith(
           channels: currentChannels,
-          messages: updatedMessages,
+          mutedChannels: conv.mutedChannels.where((item) => item != norm).toList(),
         );
         await _persist(updated);
         _setConversations(updated);

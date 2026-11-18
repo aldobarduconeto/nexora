@@ -3,7 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:nexora/src/models/community_room.dart';
 import 'package:nexora/src/models/conversation.dart';
+import 'package:nexora/src/models/protected_content.dart';
 import 'package:nexora/src/services/file_transfer_service.dart';
 import 'package:nexora/src/services/identity_protocol.dart';
 import 'package:nexora/src/services/local_data_service.dart';
@@ -12,6 +14,8 @@ import 'package:nexora/src/services/notification_service.dart';
 import 'package:nexora/src/services/p2p_connection_service.dart';
 import 'package:nexora/src/utils/serial_task_queue.dart';
 import 'package:uuid/uuid.dart';
+
+export 'package:nexora/src/models/community_room.dart' show CommunityVoiceRoom;
 
 /// A group is a full mesh: no participant forwards another author's messages.
 /// Supports all features (encrypted chat, file transfer, voice/video calls, and screen sharing)
@@ -24,8 +28,10 @@ class ConversationConnectionService extends ChangeNotifier {
     void Function(String)? onNotice,
     this.historySnapshot,
     this.currentConversation,
+    this.onRoomChange,
     P2PConnectionService Function(String key)? createPeer,
-  }) : _membership =
+  }) : _voiceNotice = onNotice,
+       _membership =
            (List<String>.from(conversation.participantIds)..sort()).join(',') {
     for (final key in conversation.participantIds.where(
       (id) => id != localUserId,
@@ -39,9 +45,34 @@ class ConversationConnectionService extends ChangeNotifier {
             connectionTimeoutSeconds: connectionTimeoutSeconds,
           );
       _peers[key] = peer;
+      if (conversation.isCommunity) {
+        peer.selectedVoiceRoom = () =>
+            _canUseVoiceWith(key) ? _voiceRoom?.name : null;
+        peer.voiceRoomMuted = () => _voiceMuted;
+      }
       _fileTransfers[key] = FileTransferService(
         send: peer.sendMessage,
         notice: onNotice ?? (_) {},
+        onProtectedTransfer: (transfer) {
+          if (_closed) return;
+          if (transfer.state == ProtectedTransferState.pending) {
+            _protectedTransfers[transfer] = key;
+          } else if (!_protectedTransfers.containsKey(transfer)) {
+            unawaited(transfer.clearCachedContent());
+            return;
+          }
+          if (_protectedTransfers.length > 100) {
+            final oldestFinished = _protectedTransfers.keys.where(
+              (item) => item.state != ProtectedTransferState.pending &&
+                  item.state != ProtectedTransferState.receiving,
+            ).firstOrNull;
+            if (oldestFinished != null) {
+              _protectedTransfers.remove(oldestFinished);
+              unawaited(oldestFinished.clearCachedContent());
+            }
+          }
+          _changed();
+        },
       );
       peer.addListener(_changed);
       _subscriptions.add(
@@ -57,9 +88,11 @@ class ConversationConnectionService extends ChangeNotifier {
   }
 
   final Conversation conversation;
+  final void Function(String)? _voiceNotice;
   final String localUserId;
   final Map<String, String> Function()? historySnapshot;
   final Conversation? Function()? currentConversation;
+  final Future<void> Function(CommunityRoomChange)? onRoomChange;
   final _historyPeers = <String>{};
   final _historyQueues = <String, SerialTaskQueue>{};
   final _pendingHistory = <String>{};
@@ -69,6 +102,7 @@ class ConversationConnectionService extends ChangeNotifier {
   final String _membership;
   final _peers = <String, P2PConnectionService>{};
   final _fileTransfers = <String, FileTransferService>{};
+  final _protectedTransfers = <ProtectedTransfer, String>{};
   final _subscriptions = <StreamSubscription<DecryptedMessage>>[];
   final _messages = StreamController<DecryptedMessage>.broadcast();
   late String _selected;
@@ -77,6 +111,28 @@ class ConversationConnectionService extends ChangeNotifier {
   bool _closed = false;
   static const _prefix = 'NEXORA_GROUP_V1:';
   static const _filePrefix = 'NEXORA_FILE_V1:';
+  static const _voicePrefix = 'NEXORA_COMMUNITY_VOICE_V1:';
+  static const _roomPrefix = 'NEXORA_COMMUNITY_ROOM_V1:';
+  CommunityVoiceRoom? _voiceRoom;
+  bool _voiceMuted = true;
+  final _remoteVoiceRooms = <String, String>{};
+  final _publishedVoiceRooms = <String, CommunityVoiceRoom?>{};
+  final _publishedRoomChanges = <String, Map<String, int>>{};
+
+  Conversation get _currentRoomDirectory => currentConversation?.call() ?? conversation;
+
+  CommunityVoiceRoom? get voiceRoom => _currentRoomDirectory.voiceRooms
+      .where((room) => room == _voiceRoom).firstOrNull ?? _voiceRoom;
+  bool get voiceMuted => _voiceMuted;
+  bool get hasVoiceRoomCall => _peers.values.any((peer) => peer.voiceRoom != null);
+  bool voicePeerActive(String key) =>
+      _peers[key]?.callState == P2PCallState.active &&
+      _peers[key]?.voiceRoom == _voiceRoom?.name;
+  Iterable<String> voiceMembers(CommunityVoiceRoom room) => [
+    if (_voiceRoom == room) localUserId,
+    for (final entry in _remoteVoiceRooms.entries)
+      if (entry.value == room.name && peerConnected(entry.key)) entry.key,
+  ];
 
   Stream<DecryptedMessage> get messages => _messages.stream;
   String get remotePublicKey => _selected;
@@ -120,7 +176,7 @@ class ConversationConnectionService extends ChangeNotifier {
       _callPeer?.currentVideoPreset ?? VideoStreamPreset.ultra4k60;
   VideoStreamPreset get remoteVideoPreset =>
       _callPeer?.remoteVideoPreset ?? VideoStreamPreset.ultra4k60;
-  bool get canStartCall => hasConnectedPeers && !isInCall;
+  bool get canStartCall => hasConnectedPeers && !isInCall && _voiceRoom == null;
 
   int get connectedCount =>
       _peers.values.where((peer) => peer.isConnected).length;
@@ -163,8 +219,10 @@ class ConversationConnectionService extends ChangeNotifier {
   void _changed() {
     _updateHistoryConnections();
     if (!_closed) {
+      _syncVoicePresence();
       final hasIncoming =
-          _peers.values.any((p) => p.callState == P2PCallState.incoming);
+          _peers.values.any((p) => p.callState == P2PCallState.incoming &&
+              p.voiceRoom == null);
       if (hasIncoming && !_wasInIncomingCall) {
         _wasInIncomingCall = true;
         unawaited(
@@ -187,6 +245,138 @@ class ConversationConnectionService extends ChangeNotifier {
     }
   }
 
+  void joinVoiceRoom(CommunityVoiceRoom room) {
+    if (!conversation.isCommunity || _closed || _voiceRoom != null || isInCall ||
+        !_currentRoomDirectory.voiceRooms.contains(room)) {
+      throw StateError('Encerre a chamada atual antes de entrar em uma sala.');
+    }
+    _voiceRoom = room;
+    _voiceMuted = true;
+    _changed();
+  }
+
+  Future<void> leaveVoiceRoom() async {
+    if (_voiceRoom == null) return;
+    _voiceRoom = null;
+    _changed();
+    await Future.wait(_peers.values.map((peer) => peer.endVoiceRoomCall()));
+  }
+
+  Future<void> toggleVoiceRoomMute() async {
+    if (_voiceRoom == null) return;
+    _voiceMuted = !_voiceMuted;
+    _changed();
+    await Future.wait(_peers.values.map((peer) => peer.syncVoiceRoomMute()));
+  }
+
+  void _syncVoicePresence() {
+    if (!conversation.isCommunity) return;
+    for (final entry in _peers.entries) {
+      final key = entry.key;
+      final peer = entry.value;
+      if (!peer.isConnected || !_canUseVoiceWith(key)) {
+        _publishedVoiceRooms.remove(key);
+        _remoteVoiceRooms.remove(key);
+        _publishedRoomChanges.remove(key);
+        if (peer.isConnected && peer.voiceRoom != null) {
+          unawaited(peer.endVoiceRoomCall().catchError((Object _) {}));
+        }
+        continue;
+      }
+      _syncRoomChanges(key, peer);
+      final room = _voiceRoom;
+      if (_publishedVoiceRooms.containsKey(key) &&
+          _publishedVoiceRooms[key] == room) continue;
+      _publishedVoiceRooms[key] = room;
+      unawaited(_publishVoicePresence(key, peer, room));
+    }
+  }
+
+  void _syncRoomChanges(String key, P2PConnectionService peer) {
+    final sent = _publishedRoomChanges.putIfAbsent(key, () => {});
+    for (final change in _currentRoomDirectory.roomChanges) {
+      if (change.author != localUserId || sent[change.id] == change.revision) continue;
+      sent[change.id] = change.revision;
+      unawaited(peer.sendMessage('$_roomPrefix${jsonEncode(change.toMap())}')
+          .catchError((Object _) {
+        if (sent[change.id] == change.revision) sent.remove(change.id);
+      }));
+    }
+  }
+
+  Future<void> _receiveRoomChange(String peer, String raw) async {
+    if (!_canUseVoiceWith(peer) || raw.length > 12000) return;
+    try {
+      final change = CommunityRoomChange.fromMap(jsonDecode(raw) as Map<String, dynamic>);
+      if (change.author == peer) await onRoomChange?.call(change);
+    } on FormatException {
+      return;
+    } on TypeError {
+      return;
+    }
+  }
+
+  Future<void> _publishVoicePresence(
+    String key,
+    P2PConnectionService peer,
+    CommunityVoiceRoom? room,
+  ) async {
+    try {
+      await peer.sendMessage('$_voicePrefix${jsonEncode({'room': room?.name})}');
+      if (!_closed && _voiceRoom == room) _connectVoicePeer(key, peer);
+    } catch (_) {
+      // A disconnected peer receives the current presence when it reconnects.
+    }
+  }
+
+  void _connectVoicePeer(String key, P2PConnectionService peer) {
+    final room = _voiceRoom;
+    if (room != null && _canUseVoiceWith(key) && _remoteVoiceRooms[key] == room.name &&
+        localUserId.compareTo(key) < 0) {
+      unawaited(peer.startVoiceRoomCall(room.name).catchError((Object error) {
+        if (!_closed) _voiceNotice?.call('Não foi possível conectar o áudio da sala.');
+      }));
+    }
+  }
+
+  void _receiveVoicePresence(String key, String payload) {
+    final peer = _peers[key];
+    if (peer == null || !peer.isConnected || !_canUseVoiceWith(key)) return;
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      if (!data.containsKey('room')) return;
+      final room = data['room'] as String?;
+      if (room != null && !CommunityRoomChange.validVoiceId(room)) return;
+      if (_remoteVoiceRooms[key] == room) return;
+      if (room == null) {
+        _remoteVoiceRooms.remove(key);
+      } else {
+        _remoteVoiceRooms[key] = room;
+      }
+      if (room != _voiceRoom?.name || (peer.voiceRoom != null &&
+          peer.voiceRoom != room)) {
+        unawaited(peer.endVoiceRoomCall().catchError((Object _) {}));
+      }
+      _connectVoicePeer(key, peer);
+      _changed();
+    } on FormatException {
+      return;
+    } on TypeError {
+      return;
+    }
+  }
+
+  bool _canUseVoiceWith(String key) {
+    if (_closed || !conversation.isCommunity ||
+        LocalDataService.instance.isBlocked(key)) return false;
+    final current = currentConversation;
+    return current == null || current()?.participantIds.contains(key) == true;
+  }
+
+  void refreshVoiceMembership() {
+    if (conversation.isCommunity) _changed();
+  }
+
   Future<String> createOffer() {
     final p = _peer;
     if (p == null) throw StateError('Nenhum participante conectado.');
@@ -203,19 +393,65 @@ class ConversationConnectionService extends ChangeNotifier {
     return p.acceptAnswer(text);
   }
 
-  Future<void> pickAndSendFile() async {
-    final targets = _peers.entries
+  Iterable<FileTransferService> get _connectedFileTargets => _peers.entries
         .where((e) => e.value.isConnected)
-        .map((e) => _fileTransfers[e.key]!)
-        .toList(growable: false);
+        .map((e) => _fileTransfers[e.key]!);
+
+  Iterable<MapEntry<ProtectedTransfer, String>> get protectedTransfers =>
+      _protectedTransfers.entries;
+
+  void decideProtected(ProtectedTransfer transfer, {required bool accept}) {
+    _fileTransfers[_protectedTransfers[transfer]]?.decideProtected(
+      transfer,
+      accept: accept,
+    );
+  }
+
+  Future<bool> pickAndSendFile({ContentWarning? warning, String? channel}) async {
+    final targets = _connectedFileTargets.toList(growable: false);
     if (targets.isEmpty) {
       throw StateError('Conecte-se a pelo menos um participante antes de enviar arquivos.');
     }
-    await FileTransferService.pickAndSendToTargets(targets);
+    return FileTransferService.pickAndSendToTargets(
+      targets,
+      warning: warning,
+      channel: channel,
+    );
+  }
+
+  void sendProtectedText({
+    required String text,
+    required ContentWarning warning,
+    String? channel,
+  }) {
+    final targets = _connectedFileTargets.toList(growable: false);
+    if (targets.isEmpty || targets.any((target) => target.isBusy)) {
+      throw StateError('Aguarde o envio atual ou reconecte-se para enviar conteúdo protegido.');
+    }
+    for (final target in targets) {
+      target.sendProtectedText(text: text, warning: warning, channel: channel);
+    }
   }
 
   Future<void> abortFiles() =>
       Future.wait(_fileTransfers.values.map((f) => f.abort()));
+
+  Future<void> clearProtectedTransfers() async {
+    final entries = _protectedTransfers.entries.toList();
+    if (entries.isEmpty) return;
+    final activePeers = <String>{
+      for (final entry in entries)
+        if (entry.key.state == ProtectedTransferState.pending ||
+            entry.key.state == ProtectedTransferState.receiving)
+          entry.value,
+    };
+    for (final entry in entries) {
+      _protectedTransfers.remove(entry.key);
+    }
+    if (!_closed) _changed();
+    await Future.wait(activePeers.map((peer) => _fileTransfers[peer]!.abort()));
+    await Future.wait(entries.map((entry) => entry.key.clearCachedContent()));
+  }
 
   Future<void> startCall({
     bool audio = true,
@@ -223,9 +459,14 @@ class ConversationConnectionService extends ChangeNotifier {
     bool screenShare = false,
     DesktopCapturerSource? screenSource,
     VideoStreamPreset? preset,
+    Set<String>? targetPeers,
   }) async {
+    if (_voiceRoom != null) {
+      throw StateError('Saia da sala de voz para iniciar uma chamada.');
+    }
     final connected = _peers.values
-        .where((p) => p.isConnected && !p.isInCall)
+        .where((p) => p.isConnected && !p.isInCall &&
+            (targetPeers == null || targetPeers.contains(p.remotePublicKey)))
         .toList(growable: false);
     if (connected.isEmpty) {
       throw StateError('Conecte-se a pelo menos um participante antes de ligar.');
@@ -626,7 +867,10 @@ class ConversationConnectionService extends ChangeNotifier {
         ),
       );
 
-      if (replayed || sender == localUserId) return;
+      if (replayed || sender == localUserId ||
+          (currentConversation?.call() ?? conversation).isChannelMuted(channel)) {
+        return;
+      }
       // Dispara notificação push para a nova mensagem recebida
       unawaited(
         NotificationService.instance.notifyIncomingMessage(
@@ -642,6 +886,19 @@ class ConversationConnectionService extends ChangeNotifier {
   }
 
   void _receive(String peer, DecryptedMessage message) {
+    if (message.content.startsWith(_roomPrefix)) {
+      if (message.senderId == peer) {
+        unawaited(_receiveRoomChange(peer, message.content.substring(_roomPrefix.length))
+            .catchError((Object _) {}));
+      }
+      return;
+    }
+    if (message.content.startsWith(_voicePrefix)) {
+      if (message.senderId == peer) {
+        _receiveVoicePresence(peer, message.content.substring(_voicePrefix.length));
+      }
+      return;
+    }
     if (message.content.startsWith(_historyPrefix)) {
       if (message.senderId == peer) {
         final queue = _historyQueues.putIfAbsent(peer, SerialTaskQueue.new);
@@ -746,10 +1003,13 @@ class ConversationConnectionService extends ChangeNotifier {
     _emit(localUserId, content, DateTime.now().toUtc());
   }
 
-  Future<void> disconnect() =>
-      Future.wait(_peers.values.map((peer) => peer.disconnect()));
+  Future<void> disconnect() async {
+    await leaveVoiceRoom();
+    await Future.wait(_peers.values.map((peer) => peer.disconnect()));
+  }
 
   Future<void> close() async {
+    _voiceRoom = null;
     _closed = true;
     for (final peer in _peers.values) {
       peer.removeListener(_changed);
@@ -758,6 +1018,7 @@ class ConversationConnectionService extends ChangeNotifier {
       await subscription.cancel();
     }
     await Future.wait(_fileTransfers.values.map((f) => f.close()));
+    await clearProtectedTransfers();
     await Future.wait(_peers.values.map((peer) => peer.close()));
     await _messages.close();
   }

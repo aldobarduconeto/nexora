@@ -8,8 +8,8 @@ import 'package:nexora/src/services/group_invitation_service.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/settings_services.dart';
 import 'package:nexora/src/utils/qr_code.dart';
-import 'package:nexora/src/views/p2p_chat.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
+import 'package:nexora/src/views/widgets/community_room_editor.dart';
 import 'package:nexora/src/views/widgets/confirmation_dialog.dart';
 import 'package:nexora/src/views/widgets/crypto_avatar.dart';
 
@@ -147,110 +147,22 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
   }
 
   Future<void> _showAddChannelDialog(Conversation community) async {
-    String channelName = '';
-    final form = GlobalKey<FormState>();
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Novo Canal de Tópico'),
-        content: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Crie um canal temático para organizar as conversas e mídias da comunidade.',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                autofocus: true,
-                maxLength: 32,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do canal',
-                  hintText: 'Ex: projetos, memes, anúncios',
-                  prefixText: '#',
-                ),
-                onChanged: (v) => channelName = v,
-                validator: (v) => v == null || v.trim().isEmpty ? 'Informe o nome do canal.' : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('Criar Canal'),
-          ),
-        ],
-      ),
+    await showCommunityRoomEditor(
+      context,
+      voice: false,
+      save: (name) => _service.addChannelToConversation(community.id, name),
     );
-
-    if (created == true && channelName.trim().isNotEmpty) {
-      await _service.addChannelToConversation(community.id, channelName.trim());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Canal "#${channelName.trim().toLowerCase()}" criado com sucesso!')),
-        );
-      }
-    }
   }
 
   Future<void> _showRenameChannelDialog(Conversation community, String oldChannel) async {
-    String newName = oldChannel;
-    final form = GlobalKey<FormState>();
-    final renamed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Renomear Canal #$oldChannel'),
-        content: Form(
-          key: form,
-          child: TextFormField(
-            initialValue: oldChannel,
-            autofocus: true,
-            maxLength: 32,
-            decoration: const InputDecoration(
-              labelText: 'Novo nome do canal',
-              prefixText: '#',
-            ),
-            onChanged: (v) => newName = v,
-            validator: (v) => v == null || v.trim().isEmpty ? 'Informe um nome.' : null,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('Renomear'),
-          ),
-        ],
-      ),
+    await showCommunityRoomEditor(
+      context,
+      voice: false,
+      initialName: oldChannel,
+      save: (name) => _service.renameChannelInConversation(community.id, oldChannel, name),
     );
-
-    if (renamed == true && newName.trim().isNotEmpty && newName.trim() != oldChannel) {
-      await _service.renameChannelInConversation(community.id, oldChannel, newName.trim());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Canal renomeado para "#${newName.trim().toLowerCase()}"')),
-        );
-      }
-    }
   }
+
 
   Future<void> _showAddMembersDialog(Conversation community) async {
     final available = _service.conversations
@@ -511,6 +423,46 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   ),
 
                   const SizedBox(height: 20),
+                  const Divider(),
+
+                  Row(
+                    children: [
+                      const Expanded(child: Text('Salas de áudio')),
+                      TextButton.icon(
+                        onPressed: () async {
+                          await showCommunityRoomEditor(
+                            sheetCtx,
+                            voice: true,
+                            save: (name) => _service.editCommunityVoiceRoom(comm.id, name),
+                          );
+                          if (sheetCtx.mounted) setSheetState(() {});
+                        },
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Nova sala'),
+                      ),
+                    ],
+                  ),
+                  for (final room in comm.voiceRooms)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.headset_mic_outlined),
+                      title: Text(room.label),
+                      trailing: IconButton(
+                        tooltip: 'Renomear sala de áudio',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () async {
+                          await showCommunityRoomEditor(
+                            sheetCtx,
+                            voice: true,
+                            initialName: room.label,
+                            save: (name) => _service.editCommunityVoiceRoom(
+                              comm.id, name, roomId: room.name,
+                            ),
+                          );
+                          if (sheetCtx.mounted) setSheetState(() {});
+                        },
+                      ),
+                    ),
                   const Divider(),
 
                   // Seção: Membros

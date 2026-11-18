@@ -23,6 +23,10 @@ dependencies:
   mobile_scanner: ^7.5.0
   qr: ^3.0.3
   zxing2: ^0.2.4
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

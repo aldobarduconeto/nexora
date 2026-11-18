@@ -184,7 +184,9 @@ jobs:
             libsecret-1-dev \
             libjsoncpp-dev \
             libasound2-dev \
-            libpulse-dev
+            libpulse-dev \
+            libmpv-dev \
+            libepoxy-dev
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
@@ -247,7 +249,7 @@ jobs:
           Section: net
           Priority: optional
           Architecture: amd64
-          Depends: libgtk-3-0, libsecret-1-0, libjsoncpp25 | libjsoncpp24 | libjsoncpp1
+          Depends: libgtk-3-0, libsecret-1-0, libjsoncpp25 | libjsoncpp24 | libjsoncpp1, libmpv2, libepoxy0
           Maintainer: nexora <support@nexora.chat>
           Description: nexora - Mensagens privadas com identidade local e conexão P2P direta.
           EOF
