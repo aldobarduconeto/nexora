@@ -20,6 +20,7 @@ class Conversation {
 
   // Features de conversas
   final bool isPinned;
+  final String category;
   final bool isMuted;
   final int? ephemeralRetentionSeconds; // 30, 300, 3600, 86400 ou null
   final List<String> pinnedMessageIds;
@@ -51,6 +52,7 @@ class Conversation {
     required this.unreadCount,
     this.status = ConversationStatus.active,
     this.isPinned = false,
+    this.category = '',
     this.isMuted = false,
     this.ephemeralRetentionSeconds,
     this.pinnedMessageIds = const [],
@@ -101,6 +103,7 @@ class Conversation {
     DateTime? lastMessageAt,
     int? unreadCount,
     bool? isPinned,
+    String? category,
     bool? isMuted,
     int? ephemeralRetentionSeconds,
     List<String>? pinnedMessageIds,
@@ -129,6 +132,7 @@ class Conversation {
       unreadCount: unreadCount ?? this.unreadCount,
       status: status ?? this.status,
       isPinned: isPinned ?? this.isPinned,
+      category: category ?? this.category,
       isMuted: isMuted ?? this.isMuted,
       ephemeralRetentionSeconds:
           ephemeralRetentionSeconds ?? this.ephemeralRetentionSeconds,
@@ -160,6 +164,7 @@ class Conversation {
       'unreadCount': unreadCount,
       'status': status.name,
       'isPinned': isPinned,
+      if (category.isNotEmpty) 'category': category,
       'isMuted': isMuted,
       if (ephemeralRetentionSeconds != null)
         'ephemeralRetentionSeconds': ephemeralRetentionSeconds,
@@ -201,6 +206,7 @@ class Conversation {
         orElse: () => ConversationStatus.active,
       ),
       isPinned: map['isPinned'] as bool? ?? false,
+      category: (map['category'] as String? ?? '').trim(),
       isMuted: map['isMuted'] as bool? ?? false,
       ephemeralRetentionSeconds: map['ephemeralRetentionSeconds'] as int?,
       pinnedMessageIds: List<String>.from(

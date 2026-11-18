@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
@@ -26,38 +25,26 @@ abstract final class AppTheme {
       brightness: brightness,
     );
 
-    // Paleta clean & moderna inspirada em Linear & Telegram Desktop (Modern Minimal / Frosted)
     final background = (dark && isAmoled)
         ? Colors.black
-        : Color.lerp(
-            dark ? const Color(0xFF0A0F1D) : const Color(0xFFF8FAFD),
-            accent,
-            dark ? .035 : .012,
-          )!;
+        : (dark ? const Color(0xFF101216) : const Color(0xFFF5F6F8));
 
     final surface = (dark && isAmoled)
-        ? const Color(0xFF0D1424)
-        : Color.lerp(
-            dark ? const Color(0xFF111827) : Colors.white,
-            accent,
-            dark ? .045 : .008,
-          )!;
+        ? const Color(0xFF101115)
+        : (dark ? const Color(0xFF191C21) : Colors.white);
 
-    final surfaceContainer = (dark && isAmoled)
-        ? const Color(0xFF131D33)
-        : Color.lerp(
-            dark ? const Color(0xFF172036) : const Color(0xFFF1F5F9),
-            accent,
-            dark ? .06 : .015,
-          )!;
+    final surfaceContainer =
+        dark ? const Color(0xFF232730) : const Color(0xFFEBEEF2);
 
     final outlineVariant = dark
-        ? Color.lerp(const Color(0xFF222F49), accent, .08)!
-        : Color.lerp(const Color(0xFFE2E8F0), accent, .06)!;
+        ? const Color(0xFF373D47)
+        : const Color(0xFFDCE1E8);
 
     final scheme = base.copyWith(
       primary: dark ? accent : Color.lerp(accent, Colors.black, .32),
       surface: surface,
+      surfaceContainerLow: Color.lerp(background, surface, .5),
+      surfaceContainer: surfaceContainer,
       surfaceContainerHighest: surfaceContainer,
       outlineVariant: outlineVariant,
     );
@@ -184,6 +171,7 @@ abstract final class AppTheme {
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surface,
         indicatorColor: scheme.primary.withValues(alpha: 0.16),
+        useIndicator: true,
         indicatorShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
@@ -275,18 +263,20 @@ class PageHeading extends StatelessWidget {
   const PageHeading({
     super.key,
     required this.title,
-    required this.description,
+    this.description,
     this.badge,
+    this.actions = const [],
   });
 
   final String title;
-  final String description;
+  final String? description;
   final Widget? badge;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    final heading = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (badge != null) ...[
@@ -296,21 +286,45 @@ class PageHeading extends StatelessWidget {
         Text(
           title,
           style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.6,
-            height: 1.2,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.7,
+            height: 1.15,
           ),
         ),
-        const SizedBox(height: 5),
-        Text(
-          description,
-          style: TextStyle(
-            fontSize: 13.5,
-            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-            height: 1.35,
+        if (description case final subtitle?) ...[
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
       ],
+    );
+    if (actions.isEmpty) return heading;
+
+    final controls = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: actions,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          constraints.maxWidth >= 620 &&
+              MediaQuery.textScalerOf(context).scale(14) < 20
+          ? Row(
+              children: [
+                Expanded(child: heading),
+                const SizedBox(width: 16),
+                Flexible(child: Align(alignment: AlignmentDirectional.centerEnd, child: controls)),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [heading, const SizedBox(height: 12), controls],
+            ),
     );
   }
 }
@@ -356,29 +370,13 @@ class FrostedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final radius = _resolveRadius();
     final effectiveBorder = _resolveBorder(colors);
 
-    final bg = backgroundColor ??
-        (isDark
-            ? colors.surface.withValues(alpha: 0.65)
-            : colors.surface.withValues(alpha: 0.85));
-
-    Widget content = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: radius,
-        border: effectiveBorder,
-      ),
-      child: child,
-    );
-
+    Widget content = Padding(padding: padding, child: child);
     if (onTap != null) {
       content = Material(
-        color: Colors.transparent,
-        borderRadius: radius,
+        type: MaterialType.transparency,
         child: InkWell(
           borderRadius: radius,
           onTap: onTap,
@@ -387,12 +385,13 @@ class FrostedCard extends StatelessWidget {
       );
     }
 
-    return ClipRRect(
-      borderRadius: radius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: content,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor ?? colors.surface,
+        borderRadius: radius,
+        border: effectiveBorder,
       ),
+      child: ClipRRect(borderRadius: radius, child: content),
     );
   }
 }
@@ -401,6 +400,9 @@ class PageFrame extends StatelessWidget {
   const PageFrame({super.key, required this.child, this.maxWidth = 920});
   final Widget child;
   final double maxWidth;
+
+  static double gutter(double width) => width < 420 ? 14 : (width < 720 ? 20 : 28);
+
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.topCenter,

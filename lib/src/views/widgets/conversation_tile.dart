@@ -106,15 +106,6 @@ class ConversationTile extends StatelessWidget {
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor, width: 1.1),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -230,6 +221,13 @@ class ConversationTile extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 3),
+                      if (conversation.category.isNotEmpty)
+                        Text(
+                          conversation.category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: colors.primary),
+                        ),
                       Row(
                         children: [
                           Icon(
@@ -344,6 +342,13 @@ class ConversationTile extends StatelessWidget {
                       const PopupMenuItem(
                         value: 'rename',
                         child: Text('Renomear grupo'),
+                      ),
+                    if (!conversation.isCommunity)
+                      PopupMenuItem(
+                        value: 'category',
+                        child: Text(conversation.category.isEmpty
+                            ? 'Definir categoria'
+                            : 'Alterar categoria'),
                       ),
                     const PopupMenuItem(
                       value: 'delete',

@@ -15,6 +15,7 @@ import 'package:nexora/src/views/p2p_chat.dart';
 import 'package:nexora/src/views/settings.dart';
 import 'package:nexora/src/views/sign_in.dart';
 import 'package:nexora/src/views/welcome_permissions_view.dart';
+import 'package:nexora/src/views/widgets/adaptive_workspace.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
 import 'package:nexora/src/views/widgets/integrated_header_bar.dart';
 import 'package:nexora/src/views/widgets/push_notification_banner.dart';
@@ -746,11 +747,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   Widget _shell() => LayoutBuilder(
     builder: (context, constraints) {
       final s = _settings.settings;
-      final wide = switch (s.navigationStyle) {
-        'side' => constraints.maxWidth >= 540,
-        'bottom' => false,
-        _ => constraints.maxWidth >= 820,
-      };
+      final wide = AdaptiveWorkspace.useSideNavigation(
+        constraints.maxWidth,
+        s.navigationStyle,
+      );
+      final splitView = _index != 2 &&
+          AdaptiveWorkspace.supportsSplitView(constraints.maxWidth);
       final homeContent = IndexedStack(
         index: _index,
         children: const [HomePage(), CommunitiesPage(), SettingsPage()],
@@ -760,41 +762,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       final conversationTabs =
           tabsService.tabs.where((t) => !t.isHome).toList();
 
-      final homeLayout = wide
-        ? Row(
-            children: [
-              _ModernActivityRail(
-                selectedIndex: _index,
-                onDestinationSelected: (value) =>
-                    setState(() => _index = value),
-                extended: constraints.maxWidth >= 820,
-                onOpenVault: () async {
-                  final vault = await _user.getOrCreateSavedMessages();
-                  ConversationTabsService.instance.openConversation(
-                    vault,
-                    title: 'Mensagens Salvas',
-                  );
-                },
-                onToggleTheme: () {
-                  _settings.updateSetting(
-                    (st) => st.copyWith(isDarkMode: !st.isDarkMode),
-                  );
-                },
-                isDarkMode: s.isDarkMode,
-              ),
-              Expanded(child: homeContent),
-            ],
-          )
-        : homeContent;
-
-      final bodyContent = IndexedStack(
-        index: tabsService.isHomeActive
-            ? 0
-            : conversationTabs.indexWhere(
-                (tab) => tab.id == tabsService.activeTab.id,
-              ) + 1,
+      final activeDetail = conversationTabs.indexWhere(
+        (tab) => tab.id == tabsService.activeTab.id,
+      );
+      final detail = IndexedStack(
+        index: activeDetail < 0 ? null : activeDetail,
         children: [
-          homeLayout,
           for (final tab in conversationTabs)
             KeyedSubtree(
               key: ValueKey('tab_${tab.id}'),
@@ -808,6 +781,43 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               ),
             ),
         ],
+      );
+
+      void selectDestination(int value) {
+        setState(() => _index = value);
+        tabsService.openHome();
+      }
+
+      final bodyContent = SafeArea(
+        top: false,
+        bottom: false,
+        child: Row(
+          children: [
+            if (wide)
+              _ModernActivityRail(
+                selectedIndex: _index,
+                onDestinationSelected: selectDestination,
+                extended: constraints.maxWidth >= 1240,
+                onOpenVault: () async {
+                  final vault = await _user.getOrCreateSavedMessages();
+                  tabsService.openConversation(vault, title: 'Mensagens Salvas');
+                },
+                onToggleTheme: () => _settings.updateSetting(
+                  (st) => st.copyWith(isDarkMode: !st.isDarkMode),
+                ),
+                isDarkMode: s.isDarkMode,
+              ),
+            Expanded(
+              key: const ValueKey('workspace'),
+              child: AdaptiveWorkspace(
+                home: homeContent,
+                detail: detail,
+                detailOpen: activeDetail >= 0,
+                splitView: splitView,
+              ),
+            ),
+          ],
+        ),
       );
 
       return Scaffold(
@@ -832,16 +842,21 @@ class _AppState extends State<App> with WidgetsBindingObserver {
                 );
               },
             ),
-            Expanded(child: bodyContent),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: bodyContent,
+              ),
+            ),
           ],
         ),
-        bottomNavigationBar: (wide || !tabsService.isHomeActive)
+        bottomNavigationBar: (wide || (activeDetail >= 0 && !splitView))
             ? null
             : NavigationBar(
                 height: 64,
                 selectedIndex: _index,
-                onDestinationSelected: (value) =>
-                    setState(() => _index = value),
+                onDestinationSelected: selectDestination,
                 destinations: [
                   NavigationDestination(
                     icon: Icon(Icons.chat_bubble_outline_rounded),
@@ -885,176 +900,56 @@ class _ModernActivityRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final width = extended ? 220.0 : 72.0;
 
-    return Container(
-      width: width,
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: 0.18),
-        border: Border(
-          right: BorderSide(
-            color: colors.outlineVariant.withValues(alpha: 0.45),
-            width: 1,
-          ),
+        border: BorderDirectional(
+          end: BorderSide(color: colors.outlineVariant.withValues(alpha: .6)),
         ),
       ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          // Nav items
-          _railItem(
-            context,
-            index: 0,
-            icon: Icons.chat_bubble_outline_rounded,
-            selectedIcon: Icons.chat_bubble_rounded,
-            label: AppText.chats.of(context),
-          ),
-          const SizedBox(height: 6),
-          _railItem(
-            context,
-            index: 1,
-            icon: Icons.hub_outlined,
-            selectedIcon: Icons.hub_rounded,
-            label: AppText.communities.of(context),
-          ),
-          const SizedBox(height: 6),
-          _railItem(
-            context,
-            index: 2,
-            icon: Icons.tune_rounded,
-            selectedIcon: Icons.tune_rounded,
-            label: AppText.settings.of(context),
-          ),
-
-          const Spacer(),
-
-          // Vault Quick Action
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: extended ? 12 : 8, vertical: 4),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: onOpenVault,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    mainAxisAlignment: extended ? MainAxisAlignment.start : MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.bookmark_rounded, size: 20, color: colors.primary),
-                      if (extended) ...[
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Mensagens Salvas',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(end: 1),
+        child: NavigationRail(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: onDestinationSelected,
+          extended: extended,
+          scrollable: true,
+          minWidth: 68,
+          minExtendedWidth: 184,
+          destinations: [
+            NavigationRailDestination(
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              selectedIcon: const Icon(Icons.chat_bubble_rounded),
+              label: Text(AppText.chats.of(context)),
             ),
-          ),
-
-          // Theme toggle action
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: extended ? 12 : 8, vertical: 4),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: onToggleTheme,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    mainAxisAlignment: extended ? MainAxisAlignment.start : MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        size: 20,
-                        color: colors.onSurfaceVariant,
-                      ),
-                      if (extended) ...[
-                        const SizedBox(width: 12),
-                        Text(
-                          isDarkMode ? 'Tema Claro' : 'Tema Escuro',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.hub_outlined),
+              selectedIcon: const Icon(Icons.hub_rounded),
+              label: Text(AppText.communities.of(context)),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-
-  Widget _railItem(
-    BuildContext context, {
-    required int index,
-    required IconData icon,
-    required IconData selectedIcon,
-    required String label,
-  }) {
-    final colors = Theme.of(context).colorScheme;
-    final isSelected = selectedIndex == index;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: extended ? 12 : 8),
-      child: Material(
-        color: isSelected
-            ? colors.primary.withValues(alpha: 0.16)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => onDestinationSelected(index),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isSelected
-                    ? colors.primary.withValues(alpha: 0.35)
-                    : Colors.transparent,
-                width: 1,
-              ),
+            NavigationRailDestination(
+              icon: const Icon(Icons.tune_rounded),
+              label: Text(AppText.settings.of(context)),
             ),
-            child: Row(
-              mainAxisAlignment: extended ? MainAxisAlignment.start : MainAxisAlignment.center,
+          ],
+          trailing: Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Wrap(
+              direction: extended ? Axis.horizontal : Axis.vertical,
+              spacing: 4,
               children: [
-                Icon(
-                  isSelected ? selectedIcon : icon,
-                  size: 21,
-                  color: isSelected ? colors.primary : colors.onSurfaceVariant,
+                IconButton(
+                  tooltip: 'Mensagens salvas',
+                  icon: const Icon(Icons.bookmark_outline_rounded),
+                  onPressed: onOpenVault,
                 ),
-                if (extended) ...[
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? colors.primary : colors.onSurface,
-                      ),
-                    ),
+                IconButton(
+                  tooltip: isDarkMode ? 'Tema claro' : 'Tema escuro',
+                  icon: Icon(
+                    isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
                   ),
-                ],
+                  onPressed: onToggleTheme,
+                ),
               ],
             ),
           ),

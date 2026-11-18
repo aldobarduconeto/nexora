@@ -5,6 +5,7 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexora/src/models/community_room.dart';
+import 'package:nexora/src/models/community_template.dart';
 import 'package:nexora/src/models/conversation.dart';
 import 'package:nexora/src/models/message.dart';
 import 'package:nexora/src/models/mirrored_device.dart';
@@ -482,6 +483,26 @@ class LocalDataService extends ChangeNotifier {
     return conversation;
   });
 
+  Future<void> setConversationCategory(String id, String category) =>
+      _tasks.run(() async {
+        final index = _conversations.indexWhere((item) => item.id == id);
+        if (index == -1 || _conversations[index].isCommunity) return;
+        final name = category.trim().replaceAll(RegExp(r'\s+'), ' ');
+        if (name.length > 32) {
+          throw ArgumentError('Use até 32 caracteres no nome da categoria.');
+        }
+        final existing = _conversations.where((item) =>
+            !item.isCommunity && item.category.toLowerCase() == name.toLowerCase())
+            .firstOrNull;
+        final label = existing?.category ?? name;
+        if (_conversations[index].category == label) return;
+        final updated = [..._conversations];
+        updated[index] = updated[index].copyWith(category: label);
+        await _persist(updated);
+        _setConversations(updated);
+        notifyListeners();
+      });
+
   Future<void> togglePinConversation(String id) => _tasks.run(() async {
     final index = _conversations.indexWhere((c) => c.id == id);
     if (index == -1) return;
@@ -510,6 +531,7 @@ class LocalDataService extends ChangeNotifier {
     required String title,
     String? description,
     List<String>? channels,
+    CommunityTemplate template = CommunityTemplate.general,
     required List<String> participantKeys,
   }) => _tasks.run(() async {
     final ownerKey = _owner;
@@ -526,7 +548,7 @@ class LocalDataService extends ChangeNotifier {
     }
     final now = DateTime.now();
     final defaultChannels = (channels == null || channels.isEmpty)
-        ? ['geral', 'anúncios', 'mídia']
+        ? template.textChannels
         : channels;
     final community = Conversation(
       id: 'comm_${now.millisecondsSinceEpoch}_${participants.length}',
@@ -534,6 +556,16 @@ class LocalDataService extends ChangeNotifier {
       isGroup: true,
       isCommunity: true,
       channels: defaultChannels,
+      roomChanges: [
+        for (final (index, label) in template.voiceLabels.indexed)
+          CommunityRoomChange(
+            id: CommunityVoiceRoom.defaults[index].name,
+            name: label,
+            voice: true,
+            author: ownerKey,
+            revision: 1,
+          ),
+      ],
       description: description?.trim(),
       adminIds: [ownerKey],
       creatorId: ownerKey,

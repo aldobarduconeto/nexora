@@ -830,15 +830,18 @@ class _P2PChatPageState extends State<P2PChatPage> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [
-          OutlinedButton.icon(
-            onPressed: _isBlocked ? null : _showVoiceRooms,
-            icon: const Icon(Icons.headset_mic_outlined, size: 18),
-            label: const Text('Salas de voz'),
-          ),
-          const SizedBox(width: 8),
           if (room == null)
-            const Spacer()
+            OutlinedButton.icon(
+              onPressed: _isBlocked ? null : _showVoiceRooms,
+              icon: const Icon(Icons.headset_mic_outlined, size: 18),
+              label: const Text('Salas de voz'),
+            )
           else ...[
+            IconButton(
+              onPressed: _isBlocked ? null : _showVoiceRooms,
+              tooltip: 'Salas de voz',
+              icon: const Icon(Icons.headset_mic_outlined),
+            ),
             Expanded(
               child: Text(
                 '${room.label} · ${_connection.voiceMembers(room).length} na sala',
@@ -2586,9 +2589,16 @@ class _P2PChatPageState extends State<P2PChatPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => _buildChat(context, constraints.maxWidth),
+  );
+
+  Widget _buildChat(BuildContext context, double width) {
     final colors = Theme.of(context).colorScheme;
     final title = _user.conversationName(widget.conversation);
+    final compact = width < 560 || MediaQuery.textScalerOf(context).scale(14) >= 20;
+    final showCallActions = !widget.conversation.isSavedMessages &&
+        _connection.voiceRoom == null && !_connection.hasVoiceRoomCall;
     final canCall = _connection.canStartCall && !_busy && !_isBlocked;
     final canScreenShare =
         _connection.hasConnectedPeers &&
@@ -2612,9 +2622,11 @@ class _P2PChatPageState extends State<P2PChatPage> {
             preferredSize: const Size.fromHeight(1),
             child: Divider(height: 1, color: colors.outlineVariant),
           ),
-          titleSpacing: 0,
+          toolbarHeight: MediaQuery.textScalerOf(context).scale(14) >= 20 ? 68 : null,
+          titleSpacing: widget.isTabMode ? 0 : 12,
           title: Row(
             children: [
+              if (!compact) ...[
               Container(
                 width: 38,
                 height: 38,
@@ -2646,6 +2658,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
                           )),
               ),
               const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2672,27 +2685,6 @@ class _P2PChatPageState extends State<P2PChatPage> {
                               Icons.verified_user_rounded,
                               color: Colors.green,
                               size: 16,
-                            ),
-                          ),
-                        ],
-                        if (widget.conversation.isCommunity) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.primary.withValues(alpha: .18),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'COMUNIDADE',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                color: colors.primary,
-                              ),
                             ),
                           ),
                         ],
@@ -2732,8 +2724,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
             ],
           ),
           actions: [
-            if (!widget.conversation.isSavedMessages &&
-                _connection.voiceRoom == null && !_connection.hasVoiceRoomCall) ...[
+            if (!compact && showCallActions) ...[
               IconButton(
                 icon: const Icon(Icons.call_outlined),
                 tooltip: canCall
@@ -2790,7 +2781,11 @@ class _P2PChatPageState extends State<P2PChatPage> {
             PopupMenuButton<String>(
               tooltip: 'Opções da conversa',
               onSelected: (value) {
-                if (value == 'clear') {
+                if (value == 'call_voice' || value == 'call_video') {
+                  unawaited(_startCall(video: value == 'call_video'));
+                } else if (value == 'call_screen') {
+                  unawaited(_startOrToggleScreenShare());
+                } else if (value == 'clear') {
                   unawaited(_confirmClear());
                 } else if (value == 'block') {
                   unawaited(_blockContact());
@@ -2817,6 +2812,25 @@ class _P2PChatPageState extends State<P2PChatPage> {
                 }
               },
               itemBuilder: (_) => [
+                if (compact && showCallActions) ...[
+                  PopupMenuItem(
+                    value: 'call_voice',
+                    enabled: canCall,
+                    child: const Text('Chamada de voz'),
+                  ),
+                  PopupMenuItem(
+                    value: 'call_video',
+                    enabled: canCall,
+                    child: const Text('Chamada de vídeo'),
+                  ),
+                  PopupMenuItem(
+                    value: 'call_screen',
+                    enabled: canScreenShare,
+                    child: Text(_connection.isScreenSharing
+                        ? 'Parar transmissão' : 'Compartilhar tela'),
+                  ),
+                  const PopupMenuDivider(),
+                ],
                 if (_isGroupChat)
                   const PopupMenuItem(
                     value: 'group_members',
@@ -2940,7 +2954,7 @@ class _P2PChatPageState extends State<P2PChatPage> {
         ),
         body: SafeArea(
           child: PageFrame(
-            maxWidth: 960,
+            maxWidth: 1040,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final pinned = _pinnedMessages ??=
@@ -3169,8 +3183,10 @@ class _P2PChatPageState extends State<P2PChatPage> {
 
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      cacheExtent: 1200,
+      padding: EdgeInsets.symmetric(
+        horizontal: PageFrame.gutter(constraints.maxWidth),
+        vertical: 16,
+      ),
       itemCount: visible.length,
       findChildIndexCallback: (Key key) {
         if (key is ValueKey<String>) {
@@ -3249,7 +3265,8 @@ class _P2PChatPageState extends State<P2PChatPage> {
                     : null,
                 child: Container(
                   constraints: BoxConstraints(
-                    maxWidth: (constraints.maxWidth * .80)
+                    maxWidth: (constraints.maxWidth *
+                        (constraints.maxWidth < 560 ? .88 : .76))
                         .clamp(180, 620)
                         .toDouble(),
                   ),

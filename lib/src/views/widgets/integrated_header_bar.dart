@@ -386,7 +386,9 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
     final useCaption = caption != null &&
         (caption.width - screenWidth).abs() < 1 &&
         (caption.height - topPadding).abs() < 1;
-    final isMobile = !isDesktop && screenWidth < 600;
+    final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
+    final isMobile = !useCaption && (screenWidth < 620 || (largeText && screenWidth < 940));
+    final narrow = screenWidth < (isDesktop ? 550 : 440) || largeText;
     final hasSubBar = isMobile && !widget.minimal;
     final barHeight = 42.0 + (hasSubBar ? 38.0 : 0.0);
     final totalHeight = useCaption
@@ -423,19 +425,23 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const BrandMark(size: 22),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Nexora',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  fontSize: 14.5,
+                              if (!isDesktop || !narrow) ...[
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Nexora',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                    fontSize: 14.5,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              _NetworkStatusPill(
-                                onTap: () => _showNetworkStatusDialog(context),
-                              ),
+                              ],
+                              if (!narrow) ...[
+                                const SizedBox(width: 8),
+                                _NetworkStatusPill(
+                                  onTap: () => _showNetworkStatusDialog(context),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -473,7 +479,8 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
                               ),
 
                             // Search icon button on mobile
-                            if (widget.onSearchPressed != null)
+                            if (widget.onSearchPressed != null && _tabsService.tabs.length > 1 &&
+                                (!isDesktop || screenWidth >= 370))
                               IconButton(
                                 visualDensity: VisualDensity.compact,
                                 tooltip: 'Buscar',
@@ -482,6 +489,7 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
                               ),
 
                             // Theme toggle button
+                            if (!isDesktop || !narrow)
                             IconButton(
                               visualDensity: VisualDensity.compact,
                               tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
@@ -523,6 +531,14 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
                                 onOpenSettings: widget.onOpenSettings ?? () {},
                               ),
                               const SizedBox(width: 8),
+                            ],
+                            if (isDesktop) ...[
+                              _WindowButton.minimize(onPressed: _windowService.minimize),
+                              _WindowButton.maximize(
+                                isMaximized: _windowService.isMaximized,
+                                onPressed: _windowService.toggleMaximize,
+                              ),
+                              _WindowButton.close(onPressed: _windowService.close),
                             ],
                           ],
                         ),
@@ -582,7 +598,7 @@ class _IntegratedHeaderBarState extends State<IntegratedHeaderBar>
               )
             : LayoutBuilder(
                 builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 780;
+                  final isWide = constraints.maxWidth >= 780 && !largeText;
 
                   return Row(
                     children: [
@@ -1434,12 +1450,16 @@ class _MobileSearchCapsule extends StatelessWidget {
                 color: colors.primary,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Buscar conversas, canais ou comandos...',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w400,
-                  color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+              Expanded(
+                child: Text(
+                  'Buscar conversas',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w400,
+                    color: colors.onSurfaceVariant.withValues(alpha: 0.85),
+                  ),
                 ),
               ),
             ],

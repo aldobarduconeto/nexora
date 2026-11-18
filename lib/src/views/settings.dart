@@ -755,7 +755,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     PageHeading(
                       title: AppText.settings.of(context),
-                      description: 'Gerencie seu perfil, aparência e privacidade.',
                     ),
                     const SizedBox(height: 20),
                     TextField(

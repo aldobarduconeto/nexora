@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nexora/src/models/community_template.dart';
 import 'package:nexora/src/models/conversation.dart';
 import 'package:nexora/src/services/conversation_tabs_service.dart';
 import 'package:nexora/src/services/group_invitation_service.dart';
 import 'package:nexora/src/services/identity_protocol.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/services/settings_services.dart';
-import 'package:nexora/src/views/p2p_chat.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
+import 'package:nexora/src/views/widgets/category_chip_strip.dart';
 import 'package:nexora/src/views/widgets/conversation_tile.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,6 +21,7 @@ class _HomePageState extends State<HomePage> {
   final _searchController = TextEditingController();
   String _query = '';
   String _chatFilter = 'all';
+  String? _categoryFilter;
   final _service = LocalDataService.instance;
   final _settings = SettingsService.instance;
 
@@ -39,7 +41,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {
+      final selected = _categoryFilter;
+      if (selected != null && !_service.conversations.any((chat) =>
+          !chat.isCommunity && chat.category.isNotEmpty &&
+          (selected.isEmpty || chat.category.toLowerCase() == selected))) {
+        _categoryFilter = null;
+      }
+    });
   }
 
   Future<void> _copyMyKey() async {
@@ -73,6 +83,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _manage(Conversation conversation, String action) async {
+    if (action == 'category') {
+      await _editCategory(conversation);
+      return;
+    }
     if (action == 'pin') {
       await _service.togglePinConversation(conversation.id);
       return;
@@ -158,6 +172,79 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Não foi possível salvar a alteração.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _editCategory(Conversation conversation) async {
+    final categories = <String, String>{
+      for (final template in CommunityTemplate.values)
+        if (template != CommunityTemplate.general)
+          template.label.toLowerCase(): template.label,
+      for (final chat in _service.conversations)
+        if (!chat.isCommunity && chat.category.isNotEmpty)
+          chat.category.toLowerCase(): chat.category,
+    }.values.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    var name = conversation.category;
+    final category = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Categoria da conversa'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final label in categories)
+                      ActionChip(
+                        label: Text(label),
+                        onPressed: () => Navigator.pop(context, label),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: name,
+                  maxLength: 32,
+                  decoration: const InputDecoration(labelText: 'Categoria personalizada'),
+                  onChanged: (value) => name = value,
+                  onFieldSubmitted: (value) => Navigator.pop(context, value),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          if (conversation.category.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Remover categoria'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, name),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (category == null || !mounted) return;
+    try {
+      await _service.setConversationCategory(conversation.id, category);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível salvar a categoria.')),
         );
       }
     }
@@ -538,8 +625,25 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _categoryChip(String? id, String label) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: ChoiceChip(
+      label: Text(label),
+      selected: _categoryFilter == id,
+      onSelected: (selected) =>
+          setState(() => _categoryFilter = selected ? id : null),
+    ),
+  );
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => _buildConversations(
+      context,
+      PageFrame.gutter(constraints.maxWidth),
+    ),
+  );
+
+  Widget _buildConversations(BuildContext context, double gutter) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = _service.currentUser;
@@ -547,6 +651,11 @@ class _HomePageState extends State<HomePage> {
     final totalCount = nonCommunity.length;
     final directCount = nonCommunity.where((c) => !c.isGroup && !c.isSavedMessages).length;
     final groupsCount = nonCommunity.where((c) => c.isGroup).length;
+    final categories = <String, String>{
+      for (final chat in nonCommunity)
+        if (chat.category.isNotEmpty) chat.category.toLowerCase(): chat.category,
+    };
+    final categoryKeys = categories.keys.toList()..sort();
 
     final filteredByTab = nonCommunity.where((c) {
       if (_chatFilter == 'direct') {
@@ -562,6 +671,8 @@ class _HomePageState extends State<HomePage> {
         filteredByTab
             .where(
               (c) =>
+                  (_categoryFilter == null ||
+                      c.category.toLowerCase() == _categoryFilter) &&
                   _service.conversationName(c).toLowerCase().contains(_query),
             )
             .toList()
@@ -574,28 +685,19 @@ class _HomePageState extends State<HomePage> {
 
     return PageFrame(
       child: CustomScrollView(
-        cacheExtent: 800.0,
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            padding: EdgeInsets.fromLTRB(gutter, 20, gutter, 0),
             sliver: SliverList.list(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: PageHeading(
-                        title: 'Conversas',
-                        description: 'Criptografia direta peer-to-peer sem servidores.',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
+                PageHeading(
+                  title: 'Conversas',
+                  actions: [
                     FilledButton.icon(
                       onPressed: _create,
                       icon: const Icon(Icons.add_rounded, size: 19),
                       label: const Text('Nova conversa'),
                     ),
-                    const SizedBox(width: 6),
                     PopupMenuButton<VoidCallback>(
                       tooltip: 'Mais ações de conversa',
                       onSelected: (action) => action(),
@@ -663,7 +765,7 @@ class _HomePageState extends State<HomePage> {
                 TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Buscar por nome, apelido ou mensagem...',
+                            hintText: 'Buscar conversas',
                     prefixIcon: const Icon(Icons.search_rounded, size: 20),
                     suffixIcon: _query.isNotEmpty
                         ? IconButton(
@@ -729,6 +831,17 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                 ),
+                if (categoryKeys.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  CategoryChipStrip(
+                    children: [
+                      _categoryChip(null, 'Todas as categorias'),
+                      _categoryChip('', 'Sem categoria'),
+                      for (final key in categoryKeys)
+                        _categoryChip(key, categories[key]!),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
               ],
             ),
@@ -768,7 +881,9 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            _query.isEmpty
+                            _categoryFilter != null
+                                ? 'Nenhuma conversa neste filtro'
+                                : _query.isEmpty
                                 ? (_chatFilter == 'groups'
                                     ? 'Nenhum grupo ativo'
                                     : 'Nenhuma conversa ainda')
@@ -782,7 +897,9 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _query.isEmpty
+                            _categoryFilter != null
+                                ? 'Selecione outra categoria ou limpe os filtros.'
+                                : _query.isEmpty
                                 ? (_chatFilter == 'groups'
                                     ? 'Crie um grupo ou entre com um convite criptografado.'
                                     : 'Adicione um contato com o código P2P dele para iniciar um chat privado.')
@@ -804,6 +921,11 @@ class _HomePageState extends State<HomePage> {
                               icon: const Icon(Icons.clear_rounded, size: 16),
                               label: const Text('Limpar busca'),
                             )
+                          else if (_categoryFilter != null)
+                            OutlinedButton(
+                              onPressed: () => setState(() => _categoryFilter = null),
+                              child: const Text('Mostrar todas as categorias'),
+                            )
                           else if (_chatFilter == 'groups')
                             FilledButton.icon(
                               onPressed: _createGroup,
@@ -811,15 +933,16 @@ class _HomePageState extends State<HomePage> {
                               label: const Text('Criar novo grupo'),
                             )
                           else
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 10,
+                              runSpacing: 8,
                               children: [
                                 FilledButton.icon(
                                   onPressed: _create,
                                   icon: const Icon(Icons.person_add_rounded, size: 17),
                                   label: const Text('Iniciar conversa'),
                                 ),
-                                const SizedBox(width: 10),
                                 OutlinedButton.icon(
                                   onPressed: _joinGroup,
                                   icon: const Icon(Icons.login_rounded, size: 16),
@@ -836,7 +959,7 @@ class _HomePageState extends State<HomePage> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 32),
               sliver: SliverList.builder(
                 itemCount: conversations.length,
                 findChildIndexCallback: (Key key) {

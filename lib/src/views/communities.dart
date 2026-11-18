@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nexora/src/models/community_room.dart';
+import 'package:nexora/src/models/community_template.dart';
 import 'package:nexora/src/models/conversation.dart';
 import 'package:nexora/src/services/conversation_tabs_service.dart';
 import 'package:nexora/src/services/group_invitation_service.dart';
@@ -749,10 +751,17 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
   }
 
   Future<void> _createCommunity() async {
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final channelsCtrl = TextEditingController(text: 'geral, anúncios, mídia');
+    var template = CommunityTemplate.general;
+    var name = '';
+    var description = '';
+    var channels = template.textChannels.join(', ');
     final form = GlobalKey<FormState>();
+
+    List<String> textChannels(String value) => value.split(',')
+        .map((name) => CommunityRoomChange.normalizeName(name, voice: false))
+        .where((name) => name.isNotEmpty)
+        .toSet()
+        .toList();
 
     final available = _service.conversations
         .where((c) => !c.isGroup && !c.isSavedMessages && !c.isCommunity)
@@ -781,14 +790,24 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Comunidades reúnem pessoas em canais organizados para cada assunto.',
-                      style: TextStyle(fontSize: 13),
+                    DropdownButtonFormField<CommunityTemplate>(
+                      initialValue: template,
+                      decoration: const InputDecoration(labelText: 'Tema da comunidade'),
+                      items: [
+                        for (final option in CommunityTemplate.values)
+                          DropdownMenuItem(value: option, child: Text(option.label)),
+                      ],
+                      onChanged: (option) {
+                        if (option == null || option == template) return;
+                        setDlgState(() {
+                          template = option;
+                          channels = option.textChannels.join(', ');
+                        });
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: nameCtrl,
-                      autofocus: true,
+                      onChanged: (value) => name = value,
                       maxLength: 48,
                       decoration: const InputDecoration(
                         labelText: 'Nome da Comunidade',
@@ -800,7 +819,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
-                      controller: descCtrl,
+                      onChanged: (value) => description = value,
                       maxLines: 2,
                       maxLength: 140,
                       decoration: const InputDecoration(
@@ -811,18 +830,32 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
-                      controller: channelsCtrl,
+                      key: ValueKey(template),
+                      initialValue: channels,
+                      onChanged: (value) => channels = value,
                       decoration: const InputDecoration(
                         labelText: 'Canais de tópicos (separados por vírgula)',
                         hintText: 'geral, anúncios, mídia, dúvidas',
                         prefixIcon: Icon(Icons.tag_rounded),
                       ),
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
+                        final names = textChannels(v ?? '');
+                        if (names.isEmpty) {
                           return 'Informe pelo menos um canal inicial.';
+                        }
+                        if (names.any((name) => name.length > 32)) {
+                          return 'Use até 32 caracteres por canal.';
                         }
                         return null;
                       },
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Salas de voz iniciais'),
+                    Text(
+                      (template.voiceLabels.isEmpty
+                              ? CommunityVoiceRoom.defaults.map((room) => room.label)
+                              : template.voiceLabels)
+                          .join(' · '),
                     ),
                     const SizedBox(height: 16),
                     const Text(
@@ -900,21 +933,22 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
     );
 
     if (created == true && mounted) {
-      final rawCh = channelsCtrl.text
-          .split(',')
-          .map(
-            (s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '-'),
-          )
-          .where((s) => s.isNotEmpty)
-          .toList();
-      final channels = rawCh.isEmpty ? ['geral'] : rawCh;
-      final comm = await _service.createCommunity(
-        title: nameCtrl.text.trim(),
-        description: descCtrl.text.trim(),
-        channels: channels,
-        participantKeys: selectedKeys.toList(),
-      );
-      if (mounted) _open(comm);
+      try {
+        final comm = await _service.createCommunity(
+          title: name,
+          description: description,
+          channels: textChannels(channels),
+          template: template,
+          participantKeys: selectedKeys.toList(),
+        );
+        if (mounted) _open(comm);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Não foi possível criar a comunidade.')),
+          );
+        }
+      }
     }
   }
 
@@ -992,7 +1026,14 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => _buildCommunities(
+      context,
+      PageFrame.gutter(constraints.maxWidth),
+    ),
+  );
+
+  Widget _buildCommunities(BuildContext context, double gutter) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = _settings.settings.layoutDensity == 'compact';
@@ -1016,25 +1057,16 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
     return PageFrame(
       maxWidth: 960,
       child: CustomScrollView(
-        cacheExtent: 800.0,
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+              padding: EdgeInsets.fromLTRB(gutter, 20, gutter, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const PageHeading(
+                  PageHeading(
                     title: 'Comunidades',
-                    description: 'Participe de grupos com canais para cada assunto.',
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Actions bar
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
+                    actions: [
                       FilledButton.icon(
                         onPressed: _createCommunity,
                         icon: const Icon(Icons.add_rounded, size: 20),
@@ -1052,7 +1084,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
                   // Search input
                   TextField(
                     decoration: const InputDecoration(
-                      hintText: 'Filtrar comunidades por nome, tópico ou canal',
+                      hintText: 'Buscar comunidades',
                       prefixIcon: Icon(Icons.search_rounded),
                     ),
                     onChanged: (val) =>
@@ -1128,7 +1160,7 @@ class _CommunitiesPageState extends State<CommunitiesPage> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 32),
               sliver: SliverList.builder(
                 itemCount: communities.length,
                 findChildIndexCallback: (Key key) {
