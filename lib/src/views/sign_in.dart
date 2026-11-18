@@ -310,7 +310,7 @@ class _SignInPageState extends State<SignInPage> {
                               ),
                             );
                           },
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 17),
+                    icon: const Icon(Icons.devices_rounded, size: 17),
                     label: Text(
                       AppText.mirrorAccount.of(context),
                       style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),

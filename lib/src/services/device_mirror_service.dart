@@ -75,6 +75,18 @@ class DeviceMirrorService {
 
   static final X25519 _x25519 = X25519();
   static final AesGcm _aesGcm = AesGcm.with256bits();
+  static const _privateCodePrefix = 'NXM1.';
+
+  String encodePrivateCode(String payload) =>
+      '$_privateCodePrefix${base64UrlEncode(utf8.encode(payload))}';
+
+  String _decodeMirrorInput(String input) {
+    final trimmed = input.trim();
+    if (!trimmed.startsWith(_privateCodePrefix)) return trimmed;
+
+    final encoded = trimmed.substring(_privateCodePrefix.length);
+    return utf8.decode(base64Url.decode(encoded));
+  }
 
   String detectPlatform() {
     try {
@@ -134,13 +146,17 @@ class DeviceMirrorService {
     );
   }
 
-  /// Faz o parse do QR Code lido pelo dispositivo Host para identificar o dispositivo receptor.
-  NexoraMirrorRequest parseMirrorRequest(String qrContent) {
+  /// Aceita uma solicitação em formato de QR Code ou código privado.
+  NexoraMirrorRequest parseMirrorRequest(String input) {
     try {
-      return NexoraMirrorRequest.deserialize(qrContent);
+      final request = NexoraMirrorRequest.deserialize(_decodeMirrorInput(input));
+      if (base64Decode(request.ephemeralPublicKey).length != 32) {
+        throw const FormatException('Chave pública inválida.');
+      }
+      return request;
     } catch (_) {
       throw const FormatException(
-        'O QR Code lido não é uma solicitação válida de espelhamento do Nexora.',
+        'Solicitação de vinculação inválida.',
       );
     }
   }
@@ -222,7 +238,8 @@ class DeviceMirrorService {
     required String authorizationPackage,
     required SimpleKeyPair receiverEphemeralKeyPair,
   }) async {
-    final data = jsonDecode(authorizationPackage.trim()) as Map<String, dynamic>;
+    final data =
+        jsonDecode(_decodeMirrorInput(authorizationPackage)) as Map<String, dynamic>;
     if (data['protocol'] != 'nexora-mirror-v1' ||
         data['type'] != 'mirror_authorization') {
       throw const FormatException('Pacote de autorização inválido.');

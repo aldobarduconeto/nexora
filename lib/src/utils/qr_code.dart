@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:qr/qr.dart' as standard_qr;
 
 /// Algoritmo puro em Dart para geração e renderização de QR Code ISO/IEC 18004.
 /// Não depende de bibliotecas nativas ou pacotes externos.
@@ -532,7 +533,6 @@ class QrCodeWidget extends StatelessWidget {
     this.foregroundColor,
     this.backgroundColor = Colors.white,
     this.padding = 16,
-    this.centerWidget,
   });
 
   final String data;
@@ -540,12 +540,24 @@ class QrCodeWidget extends StatelessWidget {
   final Color? foregroundColor;
   final Color backgroundColor;
   final double padding;
-  final Widget? centerWidget;
 
   @override
   Widget build(BuildContext context) {
     final fg = foregroundColor ?? const Color(0xFF0D1220);
-    final qr = QrCode.encodeText(data, eccLevel: 0);
+    final standard_qr.QrImage qr;
+    try {
+      qr = standard_qr.QrImage(
+        standard_qr.QrCode.fromData(
+          data: data,
+          errorCorrectLevel: standard_qr.QrErrorCorrectLevel.L,
+        ),
+      );
+    } on standard_qr.InputTooLongException {
+      return const Text(
+        'A autorização é grande demais para um QR Code. Use o código privado.',
+        textAlign: TextAlign.center,
+      );
+    }
 
     return Container(
       width: size,
@@ -562,30 +574,7 @@ class QrCodeWidget extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CustomPaint(
-            size: Size.square(size - padding * 2),
-            painter: _QrPainter(qr: qr, color: fg),
-          ),
-          if (centerWidget != null)
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 6,
-                  ),
-                ],
-              ),
-              child: centerWidget!,
-            ),
-        ],
-      ),
+      child: CustomPaint(painter: _QrPainter(qr: qr, color: fg)),
     );
   }
 }
@@ -629,7 +618,7 @@ class QrCodePainter extends CustomPainter {
 }
 
 class _QrPainter extends CustomPainter {
-  final QrCode qr;
+  final standard_qr.QrImage qr;
   final Color color;
 
   _QrPainter({required this.qr, required this.color});
@@ -638,24 +627,21 @@ class _QrPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
-      ..style = PaintingStyle.fill;
-
-    final moduleSize = size.width / qr.moduleCount;
+      ..isAntiAlias = false;
+    final moduleSize = size.shortestSide / (qr.moduleCount + 8);
+    final left = (size.width - qr.moduleCount * moduleSize) / 2;
+    final top = (size.height - qr.moduleCount * moduleSize) / 2;
 
     for (int r = 0; r < qr.moduleCount; r++) {
       for (int c = 0; c < qr.moduleCount; c++) {
         if (qr.isDark(r, c)) {
           final rect = Rect.fromLTWH(
-            c * moduleSize,
-            r * moduleSize,
+            left + c * moduleSize,
+            top + r * moduleSize,
             moduleSize,
             moduleSize,
           );
-          // Cantos ligeiramente suavizados para estética moderna
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(rect, Radius.circular(moduleSize * 0.2)),
-            paint,
-          );
+          canvas.drawRect(rect, paint);
         }
       }
     }

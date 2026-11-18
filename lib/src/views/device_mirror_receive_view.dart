@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:nexora/src/services/device_mirror_service.dart';
 import 'package:nexora/src/utils/qr_code.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
+import 'package:nexora/src/views/widgets/mirror_qr_actions.dart';
 
 class DeviceMirrorReceiveView extends StatefulWidget {
   const DeviceMirrorReceiveView({
@@ -41,7 +42,9 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
   }
 
   Future<void> _generateMirrorSession() async {
+    _authCodeController.clear();
     setState(() {
+      _session = null;
       _loading = true;
       _errorMessage = null;
     });
@@ -118,42 +121,44 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                 Navigator.pop(dialogCtx, current.trim());
               }
             },
-            child: const Text('Salvar e Atualizar QR Code'),
+            child: const Text('Salvar e atualizar vinculação'),
           ),
         ],
       ),
     );
 
-    if (chosen != null && chosen.isNotEmpty && chosen != _deviceName) {
+    if (mounted && chosen != null && chosen.isNotEmpty && chosen != _deviceName) {
       setState(() => _deviceName = chosen);
       await _generateMirrorSession();
     }
   }
 
-  Future<void> _copyQrData() async {
+  Future<void> _copyRequestCode() async {
     final session = _session;
     if (session == null) return;
-    await Clipboard.setData(ClipboardData(text: session.request.serialize()));
+    await Clipboard.setData(
+      ClipboardData(text: _service.encodePrivateCode(session.request.serialize())),
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Dados do dispositivo copiados para a área de transferência.'),
+          content: Text('Código de vinculação copiado.'),
         ),
       );
     }
   }
 
   Future<void> _applyAuthorization([String? code]) async {
+    if (!mounted || _applying || _session == null) return;
     final rawCode = code ?? _authCodeController.text.trim();
     if (rawCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe o código de autorização gerado pelo host.')),
+        const SnackBar(content: Text('Informe o código privado do dispositivo principal.')),
       );
       return;
     }
 
-    final session = _session;
-    if (session == null) return;
+    final session = _session!;
 
     setState(() => _applying = true);
 
@@ -182,7 +187,7 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Código de autorização inválido ou expirado. Tente novamente.'),
+            content: Text('Código inválido para esta solicitação de vinculação.'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -193,7 +198,9 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
   }
 
   Future<void> _pasteFromClipboard() async {
+    final session = _session;
     final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || _applying || session != _session) return;
     final text = data?.text?.trim() ?? '';
     if (text.isNotEmpty) {
       _authCodeController.text = text;
@@ -264,7 +271,7 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'No seu dispositivo principal com a conta do Nexora, aponte a câmera para ler o QR Code abaixo.',
+                    'No dispositivo principal, abra “Espelhar Conta” e use o QR Code ou cole o código de vinculação deste dispositivo.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
@@ -327,22 +334,12 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                       child: Hero(
                         tag: 'mirror_qr_code',
                         child: QrCodeWidget(
-                          data: _session!.request.serialize(),
+                          data: _service.encodePrivateCode(
+                            _session!.request.serialize(),
+                          ),
                           size: 250,
                           backgroundColor: Colors.white,
                           foregroundColor: const Color(0xFF0F172A),
-                          centerWidget: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: colors.primaryContainer,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _platformIcon(_session!.request.platform),
-                              size: 20,
-                              color: colors.primary,
-                            ),
-                          ),
                         ),
                       ),
                     ),
@@ -405,7 +402,7 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, size: 20),
                             tooltip: 'Alterar nome do dispositivo',
-                            onPressed: _editDeviceName,
+                            onPressed: _loading || _applying ? null : _editDeviceName,
                           ),
                         ],
                       ),
@@ -421,14 +418,18 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: _session == null ? null : _copyQrData,
+                        onPressed: _session == null || _applying
+                            ? null
+                            : _copyRequestCode,
                         icon: const Icon(Icons.copy_rounded, size: 17),
-                        label: const Text('Copiar código do QR Code'),
+                        label: const Text('Copiar código de vinculação'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: _generateMirrorSession,
+                        onPressed: _loading || _applying
+                            ? null
+                            : _generateMirrorSession,
                         icon: const Icon(Icons.refresh_rounded, size: 17),
-                        label: const Text('Atualizar QR Code'),
+                        label: const Text('Gerar nova solicitação'),
                       ),
                     ],
                   ),
@@ -448,12 +449,19 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Após você confirmar o espelhamento no dispositivo host, insira o código de autorização gerado:',
+                    'Após confirmar no dispositivo principal, escaneie o QR Code de autorização ou digite ou cole o código privado.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
                       fontSize: 12.5,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  MirrorQrActions(
+                    key: ObjectKey(_session),
+                    onCode: _applying || _session == null
+                        ? null
+                        : _applyAuthorization,
                   ),
                   const SizedBox(height: 12),
 
@@ -462,10 +470,11 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                       Expanded(
                         child: TextField(
                           controller: _authCodeController,
-                          enabled: !_applying,
+                          enabled: !_applying && _session != null,
+                          autocorrect: false,
+                          enableSuggestions: false,
                           decoration: const InputDecoration(
-                            labelText: 'Código de autorização do Host',
-                            hintText: 'Cole a resposta autorizada aqui',
+                            labelText: 'Código privado',
                             prefixIcon: Icon(Icons.vpn_key_rounded),
                           ),
                         ),
@@ -473,7 +482,9 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                       const SizedBox(width: 8),
                       IconButton.filledTonal(
                         tooltip: 'Colar da área de transferência',
-                        onPressed: _applying ? null : _pasteFromClipboard,
+                        onPressed: _applying || _session == null
+                            ? null
+                            : _pasteFromClipboard,
                         icon: const Icon(Icons.paste_rounded),
                       ),
                     ],
@@ -482,7 +493,9 @@ class _DeviceMirrorReceiveViewState extends State<DeviceMirrorReceiveView> {
                   const SizedBox(height: 12),
 
                   FilledButton.icon(
-                    onPressed: _applying ? null : () => _applyAuthorization(),
+                    onPressed: _applying || _session == null
+                        ? null
+                        : () => _applyAuthorization(),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(46),
                     ),

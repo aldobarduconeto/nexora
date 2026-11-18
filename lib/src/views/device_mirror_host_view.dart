@@ -4,6 +4,7 @@ import 'package:nexora/src/services/device_mirror_service.dart';
 import 'package:nexora/src/services/local_data_service.dart';
 import 'package:nexora/src/utils/qr_code.dart';
 import 'package:nexora/src/views/widgets/app_theme.dart';
+import 'package:nexora/src/views/widgets/mirror_qr_actions.dart';
 
 class DeviceMirrorHostView extends StatefulWidget {
   const DeviceMirrorHostView({super.key});
@@ -61,11 +62,12 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
     }
   }
 
-  Future<void> _processQrCode(String rawData) async {
+  Future<void> _processRequest(String rawData) async {
+    if (!mounted || _processing || _authorizedResultCode != null) return;
     final trimmed = rawData.trim();
     if (trimmed.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nenhum dado de QR Code fornecido.')),
+        const SnackBar(content: Text('Informe o código de vinculação.')),
       );
       return;
     }
@@ -77,7 +79,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'O conteúdo lido não é um QR Code válido de espelhamento do Nexora.',
+            'O código de vinculação é inválido.',
           ),
           backgroundColor: Colors.redAccent,
         ),
@@ -85,14 +87,11 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
       return;
     }
 
-    // Exibe diálogo de confirmação mostrando claramente o dispositivo que vai receber
-    if (!mounted) return;
-    final confirmed = await _showConfirmationDialog(request);
-    if (confirmed != true || !mounted) return;
-
-    // Usuário confirmou! Autoriza o dispositivo e gera o pacote criptografado
     setState(() => _processing = true);
     try {
+      final confirmed = await _showConfirmationDialog(request);
+      if (confirmed != true || !mounted) return;
+
       final privateSeed = await _user.extractPrivateSeed();
       final authCode = await _service.authorizeMirrorRequest(
         request: request,
@@ -269,12 +268,13 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
     );
   }
 
-  Future<void> _pasteAndScan() async {
+  Future<void> _pasteRequest() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || _processing || _authorizedResultCode != null) return;
     final text = data?.text?.trim() ?? '';
     if (text.isNotEmpty) {
       _codeController.text = text;
-      await _processQrCode(text);
+      await _processRequest(text);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -287,10 +287,12 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
   Future<void> _copyAuthorizationCode() async {
     final code = _authorizedResultCode;
     if (code == null) return;
-    await Clipboard.setData(ClipboardData(text: code));
+    await Clipboard.setData(
+      ClipboardData(text: _service.encodePrivateCode(code)),
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Código de autorização copiado.')),
+        const SnackBar(content: Text('Código privado copiado.')),
       );
     }
   }
@@ -352,7 +354,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
         ),
         const SizedBox(height: 20),
         const Text(
-          'Ler QR Code do Dispositivo',
+          'Autorizar novo dispositivo',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 21,
@@ -362,7 +364,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
         ),
         const SizedBox(height: 6),
         Text(
-          'No novo dispositivo, abra a opção "Espelhar Conta" para gerar o QR Code. Cole o código ou aponte a leitura abaixo.',
+          'No novo dispositivo, abra “Espelhar Conta”. Escaneie o QR Code ou informe o código de vinculação para revisar o dispositivo.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: colors.onSurfaceVariant,
@@ -371,6 +373,8 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
           ),
         ),
         const SizedBox(height: 28),
+        MirrorQrActions(onCode: _processing ? null : _processRequest),
+        const SizedBox(height: 16),
 
         // Campo para inserir o código lido do QR Code
         TextField(
@@ -378,8 +382,8 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
           enabled: !_processing,
           maxLines: 4,
           decoration: InputDecoration(
-            labelText: 'Dados do QR Code lido',
-            hintText: 'Cole aqui o texto do QR Code do dispositivo receptor...',
+            labelText: 'Código de vinculação',
+            hintText: 'Digite ou cole o código de vinculação',
             alignLabelWithHint: true,
             prefixIcon: const Padding(
               padding: EdgeInsets.only(bottom: 50),
@@ -388,7 +392,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
             suffixIcon: IconButton(
               tooltip: 'Limpar',
               icon: const Icon(Icons.clear_rounded),
-              onPressed: () => _codeController.clear(),
+              onPressed: _processing ? null : _codeController.clear,
             ),
           ),
         ),
@@ -399,7 +403,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _processing ? null : _pasteAndScan,
+                onPressed: _processing ? null : _pasteRequest,
                 icon: const Icon(Icons.paste_rounded, size: 18),
                 label: const Text('Colar da Área de Transferência'),
               ),
@@ -412,7 +416,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
         FilledButton.icon(
           onPressed: _processing
               ? null
-              : () => _processQrCode(_codeController.text),
+              : () => _processRequest(_codeController.text),
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(48),
           ),
@@ -427,7 +431,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
                 )
               : const Icon(Icons.search_rounded),
           label: Text(
-            _processing ? 'Identificando dispositivo...' : 'Ler QR Code e Confirmar',
+            _processing ? 'Processando...' : 'Revisar dispositivo',
           ),
         ),
       ],
@@ -467,7 +471,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
         ),
         const SizedBox(height: 6),
         Text(
-          'O espelhamento para "$deviceName" foi autorizado com sucesso. Conclua a vinculação no dispositivo receptor aplicando a confirmação abaixo:',
+          'Em "$deviceName", escaneie este QR Code ou informe o código privado para concluir a vinculação.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: colors.onSurfaceVariant,
@@ -484,14 +488,6 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
             size: 240,
             backgroundColor: Colors.white,
             foregroundColor: const Color(0xFF0F172A),
-            centerWidget: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: colors.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.lock_rounded, size: 18, color: colors.primary),
-            ),
           ),
         ),
 
@@ -500,7 +496,7 @@ class _DeviceMirrorHostViewState extends State<DeviceMirrorHostView> {
         FilledButton.tonalIcon(
           onPressed: _copyAuthorizationCode,
           icon: const Icon(Icons.copy_rounded, size: 18),
-          label: const Text('Copiar código de autorização'),
+          label: const Text('Copiar código privado'),
         ),
 
         const SizedBox(height: 12),
