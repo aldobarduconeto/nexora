@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexora/src/models/mirrored_device.dart';
@@ -43,6 +45,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _requestingPermissions = false;
 
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _categoryScrollController = ScrollController();
+  bool _canScrollLeft = false;
+  bool _canScrollRight = true;
+  bool _showNavButtons = true;
 
   final List<({String id, String label, IconData icon})> _categories = const [
     (id: 'all', label: 'Tudo', icon: Icons.grid_view_rounded),
@@ -66,17 +72,101 @@ class _SettingsPageState extends State<SettingsPage> {
     _permissions.addListener(_refresh);
     _notifications.addListener(_refresh);
     _scheduled.addListener(_refresh);
+    _categoryScrollController.addListener(_updateScrollButtons);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateScrollButtons());
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _categoryScrollController.removeListener(_updateScrollButtons);
+    _categoryScrollController.dispose();
     _settings.removeListener(_refresh);
     _user.removeListener(_refresh);
     _permissions.removeListener(_refresh);
     _notifications.removeListener(_refresh);
     _scheduled.removeListener(_refresh);
     super.dispose();
+  }
+
+  void _updateScrollButtons() {
+    if (!_categoryScrollController.hasClients) return;
+    final maxScroll = _categoryScrollController.position.maxScrollExtent;
+    final offset = _categoryScrollController.offset;
+    final canLeft = offset > 2.0;
+    final canRight = offset < maxScroll - 2.0;
+    final show = maxScroll > 0;
+    if (canLeft != _canScrollLeft ||
+        canRight != _canScrollRight ||
+        show != _showNavButtons) {
+      if (mounted) {
+        setState(() {
+          _canScrollLeft = canLeft;
+          _canScrollRight = canRight;
+          _showNavButtons = show;
+        });
+      }
+    }
+  }
+
+  void _scrollCategories({required bool forward}) {
+    if (!_categoryScrollController.hasClients) return;
+    const scrollStep = 220.0;
+    final maxScroll = _categoryScrollController.position.maxScrollExtent;
+    final current = _categoryScrollController.offset;
+    final target = forward
+        ? (current + scrollStep).clamp(0.0, maxScroll)
+        : (current - scrollStep).clamp(0.0, maxScroll);
+    _categoryScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _buildScrollNavButton({
+    required IconData icon,
+    required String tooltip,
+    required bool enabled,
+    required VoidCallback onPressed,
+    required ColorScheme colors,
+  }) {
+    return Material(
+      color: enabled
+          ? colors.surfaceContainerHighest.withValues(alpha: 0.5)
+          : colors.surfaceContainerHighest.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(12),
+        hoverColor: colors.primary.withValues(alpha: 0.08),
+        splashColor: colors.primary.withValues(alpha: 0.16),
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: enabled
+                    ? colors.outlineVariant.withValues(alpha: 0.7)
+                    : colors.outlineVariant.withValues(alpha: 0.2),
+                width: 1.1,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: 20,
+              color: enabled
+                  ? colors.onSurface
+                  : colors.onSurfaceVariant.withValues(alpha: 0.28),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _refresh() {
@@ -688,35 +778,116 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Barra de Categorias Horizontal (Pills)
+                    // Barra de Categorias Horizontal (Pills) com suporte a mouse wheel, mouse drag, touch e botões de navegação
                     SizedBox(
                       height: 40,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _categories.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (context, i) {
-                          final cat = _categories[i];
-                          final isSelected = _selectedCategory == cat.id;
-                          return ChoiceChip(
-                            avatar: Icon(
-                              cat.icon,
-                              size: 16,
-                              color: isSelected ? colors.primary : colors.onSurfaceVariant,
+                      child: Row(
+                        children: [
+                          if (_showNavButtons) ...[
+                            _buildScrollNavButton(
+                              icon: Icons.chevron_left_rounded,
+                              tooltip: 'Categorias anteriores',
+                              enabled: _canScrollLeft,
+                              onPressed: () => _scrollCategories(forward: false),
+                              colors: colors,
                             ),
-                            label: Text(cat.label),
-                            selected: isSelected,
-                            onSelected: (val) {
-                              if (val) {
-                                setState(() {
-                                  _selectedCategory = cat.id;
-                                  _searchController.clear();
-                                  _searchQuery = '';
-                                });
-                              }
-                            },
-                          );
-                        },
+                            const SizedBox(width: 8),
+                          ],
+                          Expanded(
+                            child: NotificationListener<ScrollMetricsNotification>(
+                              onNotification: (_) {
+                                _updateScrollButtons();
+                                return false;
+                              },
+                              child: NotificationListener<ScrollNotification>(
+                                onNotification: (_) {
+                                  _updateScrollButtons();
+                                  return false;
+                                },
+                                child: Listener(
+                                  onPointerSignal: (pointerSignal) {
+                                    if (pointerSignal is PointerScrollEvent &&
+                                        _categoryScrollController.hasClients) {
+                                      final maxScroll = _categoryScrollController
+                                          .position.maxScrollExtent;
+                                      if (maxScroll > 0) {
+                                        final delta = pointerSignal.scrollDelta.dy != 0
+                                            ? pointerSignal.scrollDelta.dy
+                                            : pointerSignal.scrollDelta.dx;
+                                        if (delta != 0) {
+                                          GestureBinding.instance
+                                              .pointerSignalResolver
+                                              .register(pointerSignal, (event) {
+                                            final current =
+                                                _categoryScrollController.offset;
+                                            final target = (current + delta)
+                                                .clamp(0.0, maxScroll);
+                                            _categoryScrollController.jumpTo(target);
+                                          });
+                                        }
+                                      }
+                                    }
+                                  },
+                                  child: ScrollConfiguration(
+                                    behavior: ScrollConfiguration.of(context).copyWith(
+                                      dragDevices: {
+                                        PointerDeviceKind.touch,
+                                        PointerDeviceKind.mouse,
+                                        PointerDeviceKind.trackpad,
+                                        PointerDeviceKind.stylus,
+                                      },
+                                    ),
+                                    child: ListView.separated(
+                                      controller: _categoryScrollController,
+                                      scrollDirection: Axis.horizontal,
+                                      physics: const BouncingScrollPhysics(
+                                        parent: AlwaysScrollableScrollPhysics(),
+                                      ),
+                                      itemCount: _categories.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(width: 8),
+                                      itemBuilder: (context, i) {
+                                        final cat = _categories[i];
+                                        final isSelected =
+                                            _selectedCategory == cat.id;
+                                        return ChoiceChip(
+                                          avatar: Icon(
+                                            cat.icon,
+                                            size: 16,
+                                            color: isSelected
+                                                ? colors.primary
+                                                : colors.onSurfaceVariant,
+                                          ),
+                                          label: Text(cat.label),
+                                          selected: isSelected,
+                                          onSelected: (val) {
+                                            if (val) {
+                                              setState(() {
+                                                _selectedCategory = cat.id;
+                                                _searchController.clear();
+                                                _searchQuery = '';
+                                              });
+                                            }
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_showNavButtons) ...[
+                            const SizedBox(width: 8),
+                            _buildScrollNavButton(
+                              icon: Icons.chevron_right_rounded,
+                              tooltip: 'Próximas categorias',
+                              enabled: _canScrollRight,
+                              onPressed: () => _scrollCategories(forward: true),
+                              colors: colors,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
